@@ -29,7 +29,7 @@ try {
         
         Write-Host "Cleaning and restoring project dependencies for ``$current``"
         if ($nugetConfigExists) {
-            dotnet restore --configfile "$current.nuget.config"
+            dotnet restore --configfile "$CWD/nuget.config"
         }
         else {
             dotnet restore
