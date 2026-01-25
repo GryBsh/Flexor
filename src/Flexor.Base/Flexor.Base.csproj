@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Azure.Bicep.Local.Extension" Version="0.40.1-ga2b8290cda" />
+    <PackageReference Include="Azure.Bicep.Local.Extension" Version="0.40.2" />
   </ItemGroup>
 
 </Project>

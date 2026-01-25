@@ -11,11 +11,13 @@ $CWD = $PWD;
 $PBTS = $env:BICEP_TRACING_ENABLED;
 $env:BICEP_TRACING_ENABLED = $Trace.IsPresent;
 try {   
-        
+
     if (-not (Test-Path "$CWD/$OutputPath")) {
         Write-Host "Creating ``$OutputPath`` directory at $CWD/$OutputPath"
         New-Item -ItemType Directory -Path "$CWD/$OutputPath" -Force | Out-Null
     }
+
+    $nugetConfigExists = Test-Path "$CWD/nuget.config"
 
     foreach ($current in $Extension) {
         
@@ -26,8 +28,13 @@ try {
         Set-Location $currentPath       
         
         Write-Host "Cleaning and restoring project dependencies for ``$current``"
-
-        dotnet restore --configfile $CWD/nuget.config
+        if ($nugetConfigExists) {
+            dotnet restore --configfile "$current.nuget.config"
+        }
+        else {
+            dotnet restore
+        }
+        dotnet restore 
         dotnet clean
 
         foreach ($rid in $Runtimes) {
