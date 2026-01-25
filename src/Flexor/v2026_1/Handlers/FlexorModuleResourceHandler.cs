@@ -26,7 +26,7 @@ public class FlexorModuleResourceHandler : TypedResourceHandler<FlexorModuleReso
         var module = request.Properties;
         var moduleKey = module.Version switch
         {
-            null or "" => $"{module.Type}",
+            var v when string.IsNullOrWhiteSpace(v) => $"{module.Type}",
             _ => $"{module.Type}@{module.Version}"
         };
 

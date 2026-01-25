@@ -13,7 +13,8 @@ param(
     ),
     [string]$FlexorPath = "flexor",
     [switch]$SkipBuild,
-    [switch]$Trace
+    [switch]$Trace,
+    [switch]$BuildBicep
 )
 
 $CWD = $PWD;
@@ -29,13 +30,14 @@ foreach ($folder in $AssetFolders) {
 New-Item -Path "$CWD/$OutputPath/readme" -ItemType Directory -ErrorAction SilentlyContinue | Out-Null;
 Copy-Item "$CWD/README.md" "$CWD/$OutputPath/readme/Flexor.md" -Force;
 
-Write-Host "Ensuring Bicep from source...";
-$Bicep = .\scripts\Get-Bicep.ps1 -DestinationPath "repos/bicep";
-    
-$env:PATH = "$(Resolve-Path $Bicep.CliPath)$([System.IO.Path]::PathSeparator)$($env:PATH)";
-$env:BICEP_LANGUAGE_SERVER_PATH = "$(Resolve-Path $Bicep.LangServerPath)";
-
 if (-not $SkipBuild) {
+    if ($BuildBicep) {
+        Write-Host "Ensuring Bicep from source...";
+        $Bicep = .\scripts\Get-Bicep.ps1 -DestinationPath "repos/bicep";
+        $env:PATH = "$(Resolve-Path $Bicep.CliPath)$([System.IO.Path]::PathSeparator)$($env:PATH)";
+        $env:BICEP_LANGUAGE_SERVER_PATH = "$(Resolve-Path $Bicep.LangServerPath)";
+    }
+
     Get-Item "$env:USERPROFILE/.nuget/packages/Azure.Bicep.*/*-g*" | Remove-Item -Recurse -Force;
     Write-Host "Building Flexor extension to $BicepBin for SDK $Sdk and runtimes: $($Runtimes -join ', ') to $BicepBin";
     scripts/Build-Extension.ps1 -Extension src/Flexor -OutputPath $BicepBin -Sdk $Sdk -Runtimes $Runtimes -Trace:$Trace.IsPresent;

@@ -14,7 +14,7 @@ if (-not (Test-Path $parentDir)) {
     New-Item -ItemType Directory -Path $parentDir -Force | Out-Null;
 }
 if (-not (Test-Path $DestinationPath)) {
-    git clone "https://github.com/Azure/bicep.git" $DestinationPath;
+    git clone "https://github.com/Azure/bicep.git" $DestinationPath --tags "v0.40.1";
     Set-Location $DestinationPath;
     Write-Host "Bicep source code cloned to $DestinationPath";    
 }

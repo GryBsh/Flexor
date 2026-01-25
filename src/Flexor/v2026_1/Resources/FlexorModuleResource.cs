@@ -11,7 +11,7 @@ public class FlexorModuleProperties : ResourceIdentifiers
     [TypeProperty("Resource Type", ObjectTypePropertyFlags.Required | ObjectTypePropertyFlags.Identifier)]
     public string? Type { get; set; }
     
-    [TypeProperty("API Version", ObjectTypePropertyFlags.Required | ObjectTypePropertyFlags.Identifier)]
+    [TypeProperty("API Version", ObjectTypePropertyFlags.Identifier)]
     public string? Version { get; set; }
     [TypeProperty("Shell type to use for execution", ObjectTypePropertyFlags.Required)]
     public ShellType? Shell { get; set; }
@@ -19,7 +19,7 @@ public class FlexorModuleProperties : ResourceIdentifiers
     [TypeProperty("The module invocation options", ObjectTypePropertyFlags.None)]
     public FlexorModuleOptions Options { get; set; } = new();
 
-    [TypeProperty("Path to Get handler script", ObjectTypePropertyFlags.Required)]
+    [TypeProperty("Path to Get handler script", ObjectTypePropertyFlags.None)]
     public string? Get { get; set; }
     
     [TypeProperty("The Get handler invocation options", ObjectTypePropertyFlags.None)]
@@ -31,7 +31,7 @@ public class FlexorModuleProperties : ResourceIdentifiers
     [TypeProperty("The CreateOrUpdate handler invocation options", ObjectTypePropertyFlags.None)]
     public FlexorResourceOptions CreateOrUpdateOptions { get; set; } = new();
 
-    [TypeProperty("Path to Delete handler script", ObjectTypePropertyFlags.Required)]
+    [TypeProperty("Path to Delete handler script", ObjectTypePropertyFlags.None)]
     public string? Delete { get; set; }   
     [TypeProperty("The Delete handler invocation options", ObjectTypePropertyFlags.None)]
     public FlexorResourceOptions DeleteOptions { get; set; } = new();
