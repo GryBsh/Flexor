@@ -9,7 +9,7 @@ version: 0.1.2026.1
 ## Why?
 Why not? There are frequently times I need something quick and easy to help slap disparate parts of a 
 deployment together, where the structural parts like parameters and parsing, slicing, and converting data types 
-is all handled by bicep. So why not Bicep?
+is all handled. So why not Bicep?
 
 ## Features
 
