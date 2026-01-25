@@ -26,7 +26,8 @@ elseif ($Run.IsPresent) {
     }
 }
 else {  
-    ./tests.pester.ps1
+    Import-Module Pester;
+    Invoke-Pester -Path ./tests.pester.ps1 -Output Detailed;
 } 
 
 if ($LASTEXITCODE -ne 0) {

@@ -1,10 +1,12 @@
 [cmdletbinding()]
 param(
     [string]$DestinationPath = "repos/bicep",
-    [string[]]$Tags = @("v0.40.1"),
+    [string]$Branch = "main",
+    [string[]]$Tags = @("v0.40.2"),
     [string]$Sdk = "net10.0",
     [switch]$Latest,
-    [switch]$Force
+    [switch]$ForceClone,
+    [switch]$ForceBuild
 )
 $ErrorActionPreference = "Stop";
 
@@ -28,35 +30,36 @@ else {
     Write-Host "Path $parentDir exists.";
 }
 
-$gitArgs = @();
 
-if ($Latest -or $Tags.Count -eq 0) {
-    Write-Host "Cloning latest Bicep source code...";
-}
-else {
-    Write-Host "Cloning Bicep source code with tags: $($Tags -join ", ")...";
-    $gitArgs += "--tags $($Tags -join " ")"
-}
-
-$gitCmdArgs = $gitArgs -join " ";
-
-if (-not (Test-Path $DestinationPath)) {
-    git clone "https://github.com/Azure/bicep.git" $DestinationPath $gitCmdArgs;
+if ($ForceClone.IsPresent -or -not (Test-Path $DestinationPath)) {
+    if ((Test-Path $DestinationPath)) {
+        Remove-Item -Recurse -Force $DestinationPath;
+        Write-Host "Removed existing path $DestinationPath";
+    }
+    if ($Latest -or $Tags.Count -eq 0) {
+        Write-Host "Cloning latest Bicep source code ...";
+        $gitCmd = "git clone `"https://github.com/Azure/bicep.git`" ${DestinationPath}"
+    }
+    else {
+        Write-Host "Cloning Bicep source code with tags: $($Tags -join ", ") ...";
+        $gitCmd = "git clone `"https://github.com/Azure/bicep.git`" ${DestinationPath} -t $($Tags -join " ")"
+    }
+    Invoke-Expression $gitCmd;    
     Write-Host "Bicep source code cloned to $DestinationPath";    
+    Set-Location $DestinationPath;
 }
 else {
     Set-Location $DestinationPath;
-    git pull $gitCmdArgs;
+    git pull;
     Write-Host "Bicep source code updated in $DestinationPath";
 }
 
-Set-Location $DestinationPath;
-if ($Force.IsPresent -or -not (Test-Path $bicepExePath)) {
+if ($ForceBuild.IsPresent -or -not (Test-Path $bicepExePath)) {
     Write-Host "Building Bicep...";
     dotnet build;
 }
 
-if ($Force.IsPresent -or -not (Test-Path $bicepLocalRepo)) {
+if ($ForceBuild.IsPresent -or -not (Test-Path $bicepLocalRepo)) {
     Write-Host "Packing Bicep NuGet packages...";
     dotnet pack -o ./bin;
 }
@@ -71,7 +74,7 @@ Set-Location $CWD;
 </configuration>
 "@  | Out-File -FilePath nuget.config -Encoding utf8 -Force;
 
-return [PSCustomObject]@{
-    CliPath = $bicepExePath;
-    LangServerPath = $bicepLangServerPath;
-}
+Get-Item "$env:USERPROFILE/.nuget/packages/Azure.Bicep.*/*-g*" | Remove-Item -Recurse -Force;
+
+$env:PATH = "$(Resolve-Path $bicepExePath)$([System.IO.Path]::PathSeparator)$($env:PATH)";
+$env:BICEP_LANGUAGE_SERVER_PATH = "$(Resolve-Path $bicepLangServerPath)";

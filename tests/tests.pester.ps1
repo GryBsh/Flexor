@@ -1,6 +1,3 @@
-Import-Module Pester;
-    
-
 BeforeAll {
     
     <#

@@ -1,0 +1,39 @@
+name: Build and Test Flexor
+on: 
+  release:
+    types: [published]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Setup PowerShell
+      uses: actions/setup-powershell@v2
+      
+    - name: Install Pester
+      run: Install-Module -Name Pester -Force -SkipPublisherCheck
+      shell: pwsh
+
+    - name: Build Flexor
+      run: |
+        ./build.ps1
+      shell: pwsh
+
+    - name: Run Tests
+      run: |
+        ./test.ps1;
+        Remove-Item .bicep/flexor/logs -Recurse -Force -ErrorAction SilentlyContinue;
+      shell: pwsh
+  
+    - name: Zip Artifacts
+      run: |
+        zip -r flexor.zip bicepconfig.json .bicep 
+      shell: bash
+    
+    - name: Release
+      uses: softprops/action-gh-release@v2
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: '*.zip'
+        token: ${{ secrets.TOKEN }}

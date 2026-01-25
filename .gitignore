@@ -20,3 +20,4 @@ __**__.json
 /nuget.config
 
 /repos/
+*.zip
