@@ -14,7 +14,8 @@ param(
     [string]$FlexorPath = "flexor",
     [switch]$SkipBuild,
     [switch]$Trace,
-    [switch]$BuildBicep
+    [switch]$LocalBicep,
+    [switch]$Force
 )
 
 $CWD = $PWD;
@@ -30,10 +31,10 @@ foreach ($folder in $AssetFolders) {
 New-Item -Path "$CWD/$OutputPath/readme" -ItemType Directory -ErrorAction SilentlyContinue | Out-Null;
 Copy-Item "$CWD/README.md" "$CWD/$OutputPath/readme/Flexor.md" -Force;
 
-if (-not $SkipBuild) {
-    if ($BuildBicep) {
-        Write-Host "Ensuring Bicep from source...";
-        $Bicep = .\scripts\Get-Bicep.ps1 -DestinationPath "repos/bicep";
+if (-not $SkipBuild.IsPresent) {
+    if ($LocalBicep.IsPresent) {
+        Write-Host "Using local Bicep build...";
+        $Bicep = .\scripts\Get-Bicep.ps1 -DestinationPath "repos/bicep" -Force:$Force.IsPresent;
         $env:PATH = "$(Resolve-Path $Bicep.CliPath)$([System.IO.Path]::PathSeparator)$($env:PATH)";
         $env:BICEP_LANGUAGE_SERVER_PATH = "$(Resolve-Path $Bicep.LangServerPath)";
     }

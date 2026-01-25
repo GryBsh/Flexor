@@ -18,6 +18,14 @@ BeforeAll {
         }
         return $outputs
     }
+
+    function Get-ScriptList {
+        @((Get-ChildItem -Path "scripts").FullName) -join "`n"
+    }
+
+    filter Remove-TerminalLineBreaks {
+        return $input -replace "`r`n", "";
+    }
 }
 
 Describe "Bicep Tests" {
@@ -38,13 +46,8 @@ Describe "Bicep Tests" {
         $outputs.bicepOutputLength   | Should -Be 0;
         
         # We need to remove terminal line breaks for the comparison
-        $outputs.stringOutput.Replace("`r`n","") | Should -Be (@(
-            "E:\source\Flexor\tests\scripts\UserMgmt"
-            "E:\source\Flexor\tests\scripts\cleanup.ps1"
-            "E:\source\Flexor\tests\scripts\test.az.bicep"
-            "E:\source\Flexor\tests\scripts\test.ps1"
-            "E:\source\Flexor\tests\scripts\test.sh"
-        ) -join "`n");
+        ($outputs.stringOutput | Remove-TerminalLineBreaks) `
+        | Should -Be $(Get-ScriptList);
         
         $outputs.createdUsername    | Should -Be "tuser";
         $outputs.createdEmail       | Should -Be "tuser@org.local";

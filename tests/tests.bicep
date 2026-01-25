@@ -53,9 +53,7 @@ resource bash 'Flexor/script@2026-01-01' = {
   name: 'bash'
   shell: 'Bash'
   script: 'scripts/test.sh'
-  dependsOn: [
-    pwsh
-  ] 
+  dependsOn: [pwsh] 
 }
 
 resource bicep 'Flexor/command@2026-01-01' = {
@@ -75,27 +73,14 @@ resource bicep 'Flexor/command@2026-01-01' = {
   ]
 }
 
-resource python 'Flexor/script@2026-01-01' = {
-  name: 'python'
+resource pythonFile 'Flexor/script@2026-01-01' = {
+  name: 'pythonFile'
   shell: 'Python'
-  env: {
-    EnvVar: 'Set from Bicep'
-  }
-  contents: '''
-import os
-import json
-result = {
-    "Works": True,
-    "EnvVar": os.getenv("EnvVar")
-}
-print(json.dumps(result))
-  '''
+  script: 'scripts/test.py'
   options: {
     timeoutSeconds: 30
   }
-  dependsOn: [
-    bash
-  ] 
+  dependsOn: [bash] 
 }
 
 
@@ -106,9 +91,7 @@ resource stringOutput 'Flexor/command@2026-01-01' = {
     '-c'
     '"&{ dir scripts | % { $_.FullName } }"'
   ]  
-  dependsOn: [
-    bicep
-  ] 
+  dependsOn: [bicep] 
 }
 
 
@@ -117,9 +100,7 @@ resource longFormHttp 'Flexor/http@2026-01-01' = {
   url: 'https://google.com'
   method: 'GET'
   //body: string(body)
-  dependsOn: [
-    stringOutput
-  ] 
+  dependsOn: [stringOutput] 
 }
 
 
@@ -154,6 +135,27 @@ resource getExistingUser 'Flexor/resource@2026-01-01' existing = {
   }
 }
 
+resource python 'Flexor/script@2026-01-01' = {
+  name: 'python'
+  shell: 'Python'
+  env: {
+    EnvVar: 'Set from Bicep'
+  }
+  contents: '''
+import os
+import json
+result = {
+    "Works": True,
+    "EnvVar": os.getenv("EnvVar")
+}
+print(json.dumps(result))
+  '''
+  options: {
+    timeoutSeconds: 30
+  }
+  dependsOn: [bash] 
+}
+
 resource scriptLiteral 'Flexor/script@2026-01-01' = {
   name: 'scriptLiteral'
   shell: 'PowerShell'
@@ -164,6 +166,7 @@ Write-Output "Hello from script literal!"
   options: {
     timeoutSeconds: 30
   }
+  dependsOn: [pwsh]
 }
 
 output scriptLiteralOutput string = scriptLiteral.output
