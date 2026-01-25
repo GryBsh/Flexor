@@ -23,7 +23,7 @@ jobs:
 
     - name: Run Tests
       run: |
-        ./test.ps1;
+        ./test.ps1 -Run;
         Remove-Item .bicep/flexor/logs -Recurse -Force -ErrorAction SilentlyContinue;
       shell: pwsh
   
