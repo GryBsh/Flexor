@@ -7,10 +7,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
 
     - name: Setup PowerShell
-      uses: actions/setup-powershell@v2
+      uses: PSModule/install-powershell@v1
       
     - name: Install Pester
       run: Install-Module -Name Pester -Force -SkipPublisherCheck
