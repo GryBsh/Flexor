@@ -22,7 +22,7 @@ resource bash 'Flexor/script@2026-01-01' = {
   name: 'bash'
   shell: 'Bash'
   script: 'assets/test.sh'
-  dependsOn: [pwsh] 
+
 }
 
 
@@ -33,7 +33,6 @@ resource pythonFile 'Flexor/script@2026-01-01' = {
   options: {
     timeoutSeconds: 30
   }
-  dependsOn: [bash] 
 }
 
 resource pythonLiteral 'Flexor/script@2026-01-01' = {
