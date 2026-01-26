@@ -105,13 +105,16 @@ public class HttpResourceHandler : TypedResourceHandler<HttpResource, HttpResour
             {
                 httpRequest.Content = new StringContent(
                     resource.Body, 
-                    Encoding.UTF8, 
+                    Encoding.UTF8,
                     resource.ContentType
                 );
             }
             else
             {
-                httpRequest.Content = new StringContent(resource.Body);
+                httpRequest.Content = new StringContent(
+                    resource.Body, 
+                    Encoding.UTF8
+                );
             }
         }
         var response = await httpClient.SendAsync(httpRequest, cancellationToken);

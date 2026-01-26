@@ -81,15 +81,21 @@ public static partial class ProcessExecutor
             }
             process.StandardInput.Close();
         }
-        
-        await process.WaitForExitAsync(
-            CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken,
-                timeout == Timeout.InfiniteTimeSpan 
-                ? CancellationToken.None 
-                : new CancellationTokenSource(timeout).Token
-            ).Token
-        );
+
+        if (process.HasExited)
+        {
+            logger?.LogWarning("Process exited immediately after starting. Command: {Command} {Arguments}", context.Command, string.Join(" ", context.Args));
+        } 
+        else {
+            await process.WaitForExitAsync(
+                CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken,
+                    timeout == Timeout.InfiniteTimeSpan 
+                    ? CancellationToken.None 
+                    : new CancellationTokenSource(timeout).Token
+                ).Token
+            );
+        }
 
         await Task.Delay(250, cancellationToken); // Ensure all output is flushed
         

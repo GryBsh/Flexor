@@ -9,8 +9,10 @@ src/**/bin
 tests/*.az.json
 tests/test/
 tests/test-*/
+tests/output/
 tests/*-test/
 tests/.flexor/
+tests/test.bicepparam
 
 __**__.json
 

@@ -30,6 +30,19 @@ public class FlexorModuleResourceHandler : TypedResourceHandler<FlexorModuleReso
             _ => $"{module.Type}@{module.Version}"
         };
 
+        if (module.Get is {} && File.Exists(module.Get) is false)
+        {
+            throw new FileNotFoundException($"The specified 'get' script file was not found: {module.Get}");
+        }
+        if (module.CreateOrUpdate is {} && File.Exists(module.CreateOrUpdate) is false)
+        {
+            throw new FileNotFoundException($"The specified 'createOrUpdate' script file was not found: {module.CreateOrUpdate}");
+        }
+        if (module.Delete is {} && File.Exists(module.Delete) is false)
+        {
+            throw new FileNotFoundException($"The specified 'delete' script file was not found: {module.Delete}");
+        }
+
         DefinedModules[moduleKey] = 
             new DefinedModuleOptions
             {
