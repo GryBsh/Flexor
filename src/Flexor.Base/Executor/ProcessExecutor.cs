@@ -77,7 +77,9 @@ public static partial class ProcessExecutor
         {
             foreach (var line in context.Input)
             {
-                await process.StandardInput.WriteLineAsync(line);
+                await process.StandardInput.WriteAsync(
+                    RemoveWindowsLineEndings(line) + "\n"
+                );
             }
             process.StandardInput.Close();
         }
@@ -110,6 +112,9 @@ public static partial class ProcessExecutor
         bool success = !( nonZeroExitCode || isTimedOut || shouldKill || wasCancelled ); 
             
         return new ProcessResult(success, process.ExitCode, isTimedOut, wasCancelled, shouldKill);
+        
+        string RemoveWindowsLineEndings(string input)
+            => input.Replace("\r\n", "\n").Replace("\r", "\n");
         
         /// <summary>
         /// Creates a ProcessStartInfo object with the specified parameters.
@@ -597,10 +602,10 @@ public static partial class ProcessExecutor
                 var bash when bash == ShellType.Bash
                     && context.Path is null
                     && context.Args is { Length: > 0 }
-                    => ["-s"],
+                    => ["-s", "--"],
                 var bash when bash == ShellType.Bash
                     && context.Path is null
-                    => ["-"],
+                    => ["-s"],
                 var python when python == ShellType.Python
                     && context.Path is null
                     && context.Args is { Length: > 0 }

@@ -21,9 +21,7 @@ resource pwsh 'Flexor/script@2026-01-01' = {
 resource preBash 'Flexor/script@2026-01-01' = {
   name: 'preBash'
   shell: 'Bash'
-  contents: '''
-chmod +x assets/test.sh
-'''
+  contents: 'chmod +x "assets/test.sh"'
 }
 
 resource bash 'Flexor/script@2026-01-01' = {

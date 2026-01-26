@@ -22,52 +22,69 @@ public class GitClient : IGitClient
             IsBare = options?.IsBare ?? defaultCloneOptions.IsBare,
             RecurseSubmodules = options?.RecurseSubmodules ?? defaultCloneOptions.RecurseSubmodules,
             Checkout = options?.Checkout ?? defaultCloneOptions.Checkout,
-            FetchOptions =
-            {
-                CredentialsProvider = CredentialProvider(credential, defaultCloneOptions.FetchOptions)
-            }
         };
+        CredentialProvider(credential, cloneOptions.FetchOptions);
+        try{
+            return Repository.Clone(repositoryUrl, localPath, cloneOptions);    
+        }
+        catch(Exception ex)
+        {
+            throw new InvalidOperationException($"Failed to clone the git repository.\n{ex.Message}\n{ex.StackTrace}", ex);
+        }
+    }
 
-        return Repository.Clone(repositoryUrl, localPath, cloneOptions);
+    public bool ShouldPull(string? path)
+    {
+        if (path is null || !Directory.Exists(path))
+        {
+            return false;
+        }
+
+        var repositoryPath = Repository.Discover(path);
+        return repositoryPath is not null;
     }
 
     public void PullRepository(string repositoryPath, Credential? credential = null)
     {
-        var repository = new Repository(repositoryPath);
-        var sig = repository.Config.BuildSignature(DateTimeOffset.Now);
-        var options = new PullOptions()
+        try
         {
-            FetchOptions =
-            {
-                CredentialsProvider = CredentialProvider(credential, new FetchOptions())
-            }
-        };
-        var result = Commands.Pull(
-            repository, 
-            sig, 
-            options
-        );
+            repositoryPath = Repository.Discover(repositoryPath)
+                             ?? throw new InvalidOperationException("Could not find a git repository at the specified path.");
+            var repository = new Repository(repositoryPath);
+            
+            var sig = repository.Config.BuildSignature(DateTimeOffset.Now);
+            
+            var options = new PullOptions();
+            CredentialProvider(credential, options.FetchOptions);
+            var result = Commands.Pull(
+                repository, 
+                sig, 
+                options
+            );
 
-        if (result.Status == MergeStatus.Conflicts)
+            if (result.Status == MergeStatus.Conflicts)
+            {
+                throw new InvalidOperationException("Pull resulted in conflicts.");
+            }
+        }
+        catch (Exception ex)
         {
-            throw new InvalidOperationException("Pull resulted in conflicts.");
+            throw new InvalidOperationException($"Failed to pull the git repository.\n{ex.Message}\n{ex.StackTrace}", ex);
         }
     }
 
-    private static CredentialsHandler CredentialProvider(Credential? credential, FetchOptions defaultOptions) =>
-        (url, user, types) =>
-        {            
-            if (credential is not null)
-            {
-                return new UsernamePasswordCredentials
-                {
-                    Username = credential.Username,
-                    Password = credential.StringPassword
-                };
-            }
-            else 
-            {
-                return defaultOptions.CredentialsProvider(url, user, types);
-            }
-        };
+    private static void CredentialProvider(Credential? credential, FetchOptions options)
+    {
+        if (credential is not null)
+        {
+            options.CredentialsProvider = (url, user, types) =>
+            {        
+                    return new UsernamePasswordCredentials
+                    {
+                        Username = credential.Username,
+                        Password = credential.StringPassword
+                    };
+            };
+        }
+    }
 }

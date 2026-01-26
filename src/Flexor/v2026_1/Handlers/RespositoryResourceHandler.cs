@@ -77,25 +77,24 @@ public class RepositoryResourceHandler(IGitClient gitClient) : TypedResourceHand
             )
         };
 
-        var pull = path is { }                                       // If a path is provided, we may need to pull
-                   && Directory.Exists(path)                         // if the directory exists
-                   && Repository.Discover(path) is { } repository;   // and it's a git repository
-
+        var pull = gitClient.ShouldPull(path);           // If a path is provided, we may need to pull
+                   
         var clone = !pull && request.Source is { };
 
         if (pull)
         {
             gitClient.PullRepository(
-                request.Path!, // path is non-null here
+                path, // path is non-null here
                 request.Credential
             );
+            request.Path = Path.GetFullPath(path);
         }
         else if (clone)
         {
             request.Path = gitClient.CloneRespository(
                 null,
                 request.Source!, // source is non-null here
-                request.Path,
+                path,
                 request.Credential
             );
         }

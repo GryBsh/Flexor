@@ -47,9 +47,9 @@ Describe "Git" {
         $outputs = Invoke-TestBicep -Path "git.test.bicep";
         
         $outputs | Should -Not -BeNullOrEmpty;
-        
-        #$outputs.clonePath  | Should -Be $(Get-Item -Path "output/Flexor").FullName;
-        #$outputs.pullPath   | Should -Be $(Get-Item -Path "output/Flexor").FullName;
+        $gitPath = $((Get-Item -Path "output/Flexor/.git" -Force).FullName+[IO.Path]::DirectorySeparatorChar);
+        $outputs.clonePath | Should -Be "$gitPath";
+        $outputs.pullPath  | Should -Be "$gitPath";
         #$outputs.regPulledPath   | Should -Be $(Get-Item -Path "output/Flexor").FullName;
     }
 }

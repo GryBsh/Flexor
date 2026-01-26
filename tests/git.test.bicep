@@ -13,17 +13,17 @@ resource clone 'Flexor/repo@2026-01-01' = {
   path: 'output/Flexor'
 }
 
-/*
+
 resource pull 'Flexor/repo@2026-01-01' existing = {
   name: 'PullRepo'
   path: clone.path
 }
-
+/*
 resource regPull 'Flexor/repo@2026-01-01' = {
   name: 'PullAgain'
   path: clone.path
 }
 */
 output clonePath string = clone.path
-//output pulledPath string = pull.path
+output pullPath string = pull.path
 //output regPulledPath string = regPull.path

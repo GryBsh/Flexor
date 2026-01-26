@@ -13,6 +13,8 @@ public interface IGitClient
         Credential? credentials = null
     );
 
+    bool ShouldPull(string? path);
+
     void PullRepository(
         string repositoryPath,
         Credential? credential = null
