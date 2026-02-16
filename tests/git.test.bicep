@@ -1,6 +1,6 @@
 targetScope = 'local'
 extension flexor with {
-  pathRoot: '../.bicep/flexor'
+  flexorPath: '../.bicep/flexor'
   logOptions: {
     disableRollover: true
   }
@@ -8,19 +8,16 @@ extension flexor with {
 
 
 resource clone 'Flexor/repo@2026-01-01' = {
-  name: 'CloneRepo'
   source: 'https://github.com/GryBsh/Flexor.git'
   path: 'output/Flexor'
 }
 
 
 resource pull 'Flexor/repo@2026-01-01' existing = {
-  name: 'PullRepo'
   path: clone.path
 }
 /*
 resource regPull 'Flexor/repo@2026-01-01' = {
-  name: 'PullAgain'
   path: clone.path
 }
 */

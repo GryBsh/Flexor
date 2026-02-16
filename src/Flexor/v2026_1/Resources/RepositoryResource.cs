@@ -5,11 +5,11 @@ using LibGit2Sharp;
 
 namespace Flexor.v2026_1.Resources;
 
-public class RepositoryResourceIdentifiers : ResourceIdentifiers
+public class RepositoryResourceIdentifiers
 {
-    [TypeProperty("Repository Type", ObjectTypePropertyFlags.None)]
+    [TypeProperty("Repository Type", ObjectTypePropertyFlags.Identifier)]
     public RepositoryType? Type { get; set; } = null;
-    [TypeProperty("Repostitory Source")]
+    [TypeProperty("Repostitory Source", ObjectTypePropertyFlags.Identifier)]
     public string? Source { get; set; }
     [TypeProperty("Repository Local Path", ObjectTypePropertyFlags.Identifier)]
     public string? Path { get; set; }
@@ -20,7 +20,7 @@ public class RepositoryResourceIdentifiers : ResourceIdentifiers
     //[TypeProperty("Options for pulling updates from the Git repository", ObjectTypePropertyFlags.None)]
     //public PullOptions PullOptions { get; set; } = new();
 
-    [TypeProperty("Credentials for accessing the Git repository", ObjectTypePropertyFlags.None)]
+    [TypeProperty("Credentials for accessing the Git repository", ObjectTypePropertyFlags.Identifier)]
     public Credential? Credential { get; set; }
 }
 

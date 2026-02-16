@@ -4,7 +4,7 @@ namespace Flexor.Executor;
 
 public static class LogFile
 {
-    public static (string Name, string StdOut, string StdErr) BeginOrRollover(FlexorBaseOptions config, string? name, bool append, bool cleanup)
+    public static (string Name, string StdOut, string StdErr) BeginOrRollover(FlexorOptions config, string? name, bool append, bool cleanup)
     {
         if (!Directory.Exists(config.LogPath))
             Directory.CreateDirectory(config.LogPath);
@@ -17,7 +17,7 @@ public static class LogFile
         return (name, stdOutFile, stdErrFile);
     }
     
-    public static string BeginOrRollover(FlexorBaseOptions config, string name, string? type, bool append, bool cleanup)
+    public static string BeginOrRollover(FlexorOptions config, string name, string? type, bool append, bool cleanup)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("Log name cannot be null or whitespace.", nameof(name));
@@ -38,7 +38,7 @@ public static class LogFile
 
         return filename;
 
-        static string LogName(FlexorBaseOptions config, string name, string? type = null)
+        static string LogName(FlexorOptions config, string name, string? type = null)
         {
             return $"{config.LogPath}/{name}" + (string.IsNullOrWhiteSpace(type) ? string.Empty : $"{config.LogOptions.FilenameSeparator}{type}") + config.LogOptions.FilenameExtension;
         }

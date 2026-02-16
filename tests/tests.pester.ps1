@@ -20,7 +20,8 @@ BeforeAll {
     }
 
     function Get-AssetList {
-        @((Get-ChildItem -Path "assets").FullName) -join "`n"
+        $assets = @((Get-ChildItem -Path "assets").FullName) -join "`n"
+        return $assets;
     }
 
     filter Remove-TerminalLineBreaks {
@@ -73,16 +74,38 @@ Describe "Scripts" {
         
         $outputs.scriptLiteralOutput | Should -Be "Hello from script literal!";
         
-        $outputs.pwshResult          | Should -Be '{"Works":true,"EnvVar":"Set from Bicep"}';
+        $outputs.pwshResult | Should -Be '{"Works":true,"EnvVar":"Set from Bicep"}';
+        $outputs.pwshWorks  | Should -Be $true;
+
+        $outputs.bashResult | Should -Be '{"Works":true}';
+        $outputs.bashWorks  | Should -Be $true;
+
+        $outputs.pythonResult | Should -Be '{"Works":true,"EnvVar":"Set from Bicep"}';
+        $outputs.pythonWorks  | Should -Be $true;
+        
+        $outputs.pythonFileResult | Should -Be 'Works!';
+    }
+}
+
+
+Describe "Container" {
+    It "should execute scripts successfully" {
+        $outputs = Invoke-TestBicep -Path "containers.test.bicep";
+        
+        $outputs | Should -Not -BeNullOrEmpty;
+        
+        $outputs.scriptLiteralOutput | Should -Be "Hello from script literal!\n";
+        
+        $outputs.pwshResult | Should -Be '{"Works":true,"EnvVar":"Set from Bicep"}\n';
         $outputs.pwshWorks           | Should -Be $true;
 
-        $outputs.bashResult          | Should -Be '{"Works":true}';
+        $outputs.bashResult | Should -Be '{"Works":true}\n';
         $outputs.bashWorks           | Should -Be $true;
 
-        $outputs.pythonResult        | Should -Be '{"Works":true,"EnvVar":"Set from Bicep"}';
+        $outputs.pythonResult | Should -Be '{"Works":true,"EnvVar":"Set from Bicep"}\n';
         $outputs.pythonWorks         | Should -Be $true;
         
-        $outputs.pythonFileResult    | Should -Be 'Works!';
+        $outputs.pythonFileResult | Should -Be 'Works!\n';
     }
 }
 

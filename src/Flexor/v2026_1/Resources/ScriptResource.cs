@@ -27,11 +27,10 @@ public class ScriptResourceProperties : ResourceIdentifiers
     public ScriptResourceOptions Options { get; set; } = new();
 }
 
-public class ScriptResourceOptions : InvocationResourceOptions
+public class ScriptResourceOptions : ExecutionOptions
 {
 
 }
-
 
 
 [ResourceType($"{V2026_1_Constants.Namespace}/script", V2026_1_Constants.ApiVersion)]

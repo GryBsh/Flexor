@@ -1,6 +1,6 @@
 targetScope = 'local'
 extension flexor with {
-  pathRoot: '../.bicep/flexor'
+  flexorPath : '../.bicep/flexor'
   logOptions: {
     disableRollover: true
   }
@@ -12,13 +12,10 @@ var body = {
 
 // HTTP
 resource get 'Flexor/http@2026-01-01' existing = {
-  name: 'get'
   url: 'https://postman-echo.com/get'
-  enableLogging: false
 }
 
 resource post 'Flexor/http@2026-01-01' = {
-  name: 'post'
   url: 'https://postman-echo.com/post'
   method: 'POST'
   contentType: 'application/json'
@@ -29,6 +26,7 @@ resource post 'Flexor/http@2026-01-01' = {
     }
   ]
   body: string(body)
+  expectedStatusCodes: [200]
   dependsOn: [get] 
 }
 
@@ -36,3 +34,5 @@ output getStatusCode int = get.statusCode
 output getResponseBody string = get.output
 output postStatusCode int = post.statusCode
 output postResponseBody string = post.output
+
+output postWorks bool = json(post.output).json.Works

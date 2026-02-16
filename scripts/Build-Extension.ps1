@@ -10,10 +10,9 @@ param(
 $CWD = $PWD;
 $PBTS = $env:BICEP_TRACING_ENABLED;
 $env:BICEP_TRACING_ENABLED = $Trace.IsPresent;
-$nugetConfigExists = Test-Path "$CWD/nuget.config"
 
 function DotNetRestore{
-    if ($nugetConfigExists) {
+    if ((Test-Path "$CWD/nuget.config")) {
         dotnet restore --configfile "$CWD/nuget.config"
     }
     else {

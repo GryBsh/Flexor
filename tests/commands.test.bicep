@@ -1,6 +1,6 @@
 targetScope = 'local'
 extension flexor with {
-  pathRoot: '../.bicep/flexor'
+  flexorPath: '../.bicep/flexor'
   logOptions: {
     disableRollover: true
   }
@@ -13,9 +13,7 @@ resource cleanup 'Flexor/script@2026-01-01' = {
   script: 'assets/cleanup.ps1'
 }
 
-
-
-resource bicep 'Flexor/command@2026-01-01' = {
+resource bicep 'Flexor/run@2026-01-01' = {
   name: 'bicep'
   command: 'bicep'
   env: {} 
@@ -28,12 +26,12 @@ resource bicep 'Flexor/command@2026-01-01' = {
   dependsOn: [cleanup]
 }
 
-resource stringOutput 'Flexor/command@2026-01-01' = {
+resource stringOutput 'Flexor/run@2026-01-01' = {
   name: 'stringOutput'
   command: 'pwsh'
   args: [
     '-c'
-    '"&{ dir assets | % { $_.FullName } }"'
+    '&{ dir assets | % { $_.FullName } }'
   ]  
   dependsOn: [cleanup] 
 }

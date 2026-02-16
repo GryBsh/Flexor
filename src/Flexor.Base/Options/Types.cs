@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
 namespace Flexor.Options;
 
 /// <summary>
@@ -21,14 +24,35 @@ public enum RepositoryType : int
     Git 
 }
 
-/// <summary>
-/// Specifies the archive formats supported for compression and extraction operations.
-/// </summary>
-public enum ArchiveType : int
+public enum ModuleParamHandlingType : int
 {
-    Zip = 0,
-    Tar,
-    TarGz,
-    //TarBz2,
-    //TarXz
+    Env = 0,
+    Args,
+    StdInEnv,
+    StdInJson,
+}
+
+public record JsonType(bool IsJson, bool IsObject, bool IsArray, bool IsScalar)
+{
+    public static JsonType Of(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return new(false, false, false, false);
+
+        var result = Result<JsonType>.From(
+            () =>
+            {
+                var node = JsonSerializer.Deserialize<JsonNode>(input);
+                return new(
+                    node is { },
+                    node is JsonObject,
+                    node is JsonArray,
+                    node is JsonValue
+                );
+            }
+        );
+        return result.IsSuccess 
+             ? result.Value! 
+             : new(false, false, false, false);
+    }
 }

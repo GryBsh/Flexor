@@ -5,14 +5,18 @@ using Flexor.v2026_1.Options;
 
 namespace Flexor.v2026_1.Resources;
 
-
-public class FlexorModuleProperties : ResourceIdentifiers
+public class FlexorModuleIdentifiers
 {
     [TypeProperty("Resource Type", ObjectTypePropertyFlags.Required | ObjectTypePropertyFlags.Identifier)]
     public string? Type { get; set; }
     
     [TypeProperty("API Version", ObjectTypePropertyFlags.Identifier)]
     public string? Version { get; set; }
+}
+public class FlexorModuleProperties : FlexorModuleIdentifiers
+{
+
+    
     [TypeProperty("Shell type to use for execution", ObjectTypePropertyFlags.Required)]
     public ShellType? Shell { get; set; }
 
@@ -33,6 +37,7 @@ public class FlexorModuleProperties : ResourceIdentifiers
 
     [TypeProperty("Path to Delete handler script", ObjectTypePropertyFlags.None)]
     public string? Delete { get; set; }   
+
     [TypeProperty("The Delete handler invocation options", ObjectTypePropertyFlags.None)]
     public FlexorResourceOptions DeleteOptions { get; set; } = new();
 }

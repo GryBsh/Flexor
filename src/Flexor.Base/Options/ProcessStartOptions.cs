@@ -28,11 +28,11 @@ public class ProcessStartOptions
     /// <summary>
     /// Handler for standard output lines
     /// </summary>
-    public Action<string>? OutputHandler { get; set; }
+    public Action<string>? StdOutputHandler { get; set; }
     /// <summary>
     /// Handler for standard error lines
     /// </summary>
-    public Action<string>? ErrorHandler { get; set; }
+    public Action<string>? StdErrorHandler { get; set; }
     /// <summary>
     /// Indicates whether to run the process with elevated (administrator) privileges
     /// </summary>
@@ -49,9 +49,22 @@ public class ProcessStartOptions
     /// Indicates whether to overwrite existing PATH or path-like environment variables instead of appending to them
     /// </summary>
     public bool OverwriteEnvPaths { get; set; } = false;
+
+    public bool UseContainer { get; set; } = false;
+    public string? ContainerImage { get; set; }
+    public string? ContainerCli { get; set; }
+    public string[]? ContainerCliArgs { get; set; }
+
+    public Dictionary<string, string>? ContainerMounts { get; set; }
+
+    public string? WorkingPathMount { get; set; }
+
+    public bool NoWait { get; set; } = false;
+
     /// <summary>
     /// Environment variables to which values will be appended
     /// </summary>
     public AppendedVariable[] AppendEnvVars { get; set; } = [];
-
+    
+    public string? FlexorPath {get; set; }
 }

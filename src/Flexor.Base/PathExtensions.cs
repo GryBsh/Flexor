@@ -21,12 +21,22 @@ public static class PathExtensions
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            return path.Replace(UnixPathSeparator, WindowsPathSeparator);
+            return path.AsWindowsPath();
         }
         else
         {
-            return path.Replace(WindowsPathSeparator, UnixPathSeparator);
+            return path.AsUnixPath();
         }
+    }
+
+    public static string AsUnixPath(this string path)
+    {
+        return path.Replace(WindowsPathSeparator, UnixPathSeparator);
+    }
+
+    public static string AsWindowsPath(this string path)
+    {
+        return path.Replace(UnixPathSeparator, WindowsPathSeparator);
     }
 
     /// <summary>

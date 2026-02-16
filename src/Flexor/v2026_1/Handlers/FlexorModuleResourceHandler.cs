@@ -5,14 +5,15 @@ using Flexor.v2026_1.Resources;
 
 namespace Flexor.v2026_1.Handlers;
 
-public class FlexorModuleResourceHandler : TypedResourceHandler<FlexorModuleResource, ResourceIdentifiers, FlexorOptions>
+public class FlexorModuleResourceHandler : TypedResourceHandler<FlexorModuleResource, FlexorModuleIdentifiers, FlexorV2026_01_01_Options>
 {
-    internal static Dictionary<string, DefinedModuleOptions> DefinedModules { get; } = [];
+    internal static Dictionary<string, DefinedModule> DefinedModules { get; } = [];
 
-    protected override ResourceIdentifiers GetIdentifiers(FlexorModuleResource properties) 
+    protected override FlexorModuleIdentifiers GetIdentifiers(FlexorModuleResource properties) 
         => new()
         {
-            Name = properties.Name
+            Type = properties.Type,
+            Version = properties.Version
         };
 
     protected override async Task<ResourceResponse> Preview(ResourceRequest request, CancellationToken cancellationToken)
@@ -44,12 +45,12 @@ public class FlexorModuleResourceHandler : TypedResourceHandler<FlexorModuleReso
         }
 
         DefinedModules[moduleKey] = 
-            new DefinedModuleOptions
+            new DefinedModule
             {
                 Type = module.Type ?? string.Empty,
                 Version = module.Version ?? string.Empty,
                 ShellType = module.Shell ?? ShellType.Default,
-                Env = module.Options.Env ?? [],
+                Options = module.Options ?? new FlexorModuleOptions(),
                 Get = module.Get ?? string.Empty,
                 GetOptions = module.GetOptions,
                 CreateOrUpdate = module.CreateOrUpdate ?? string.Empty,

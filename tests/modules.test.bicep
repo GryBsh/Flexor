@@ -1,13 +1,12 @@
 targetScope = 'local'
 extension flexor with {
-  pathRoot: '../.bicep/flexor'
+  flexorPath: '../.bicep/flexor'
   logOptions: {
     disableRollover: true
   }
 }
 
 resource userModule 'Flexor/module@2026-01-01' = {
-  name: 'CustomUserManagement'
   shell: 'PowerShell'
   type: 'MyOrg/User'
   version: 'v1'

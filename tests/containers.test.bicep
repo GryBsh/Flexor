@@ -6,42 +6,67 @@ extension flexor with {
   }
 }
 
+resource stringOutput 'Flexor/run@2026-01-01' = {
+  name: 'cntr-stringOutput'
+  command: 'pwsh'
+  args: [
+    '-c'
+    '&{ dir /workdir/assets | % { $_.FullName } }'
+  ]
+  options: {
+    useContainer: true
+    containerImage: 'mcr.microsoft.com/azure-powershell:latest'
+  } 
+}
+
+output stringOutput string = stringOutput.output
+
 resource pwsh 'Flexor/script@2026-01-01' = {
-  name: 'pwsh'
+  name: 'cntr-pwsh'
   shell: 'PowerShell'
-  script: 'assets/test.ps1'
+  script: '/workspace/assets/test.ps1'
   env: {
     EnvVar: 'Set from Bicep'
   }
   options: {
-    timeoutSeconds: 60
+    useContainer: true
+    containerImage: 'mcr.microsoft.com/azure-powershell:latest'
   }
 }
 
 resource preBash 'Flexor/script@2026-01-01' = {
-  name: 'preBash'
+  name: 'cntr-preBash'
   shell: 'Bash'
-  contents: 'chmod +x "assets/test.sh"'
+  contents: 'chmod +x "/workspace/assets/test.sh"'
+  options: {
+    useContainer: true
+    containerImage: 'debian:latest'
+  }
 }
 
 resource bash 'Flexor/script@2026-01-01' = {
-  name: 'bash'
+  name: 'cntr-bash'
   shell: 'Bash'
-  script: 'assets/test.sh'
+  script: '/workspace/assets/test.sh'
+  options: {
+    useContainer: true
+    containerImage: 'debian:latest'
+  }
 }
 
 
 resource pythonFile 'Flexor/script@2026-01-01' = {
-  name: 'pythonFile'
+  name: 'cntr-pythonFile'
   shell: 'Python'
-  script: 'assets/test.py'
+  script: '/workspace/assets/test.py'
   options: {
-    timeoutSeconds: 30
+    useContainer: true
+    containerImage: 'python:3.11-slim'
   }
 }
 
 resource pythonLiteral 'Flexor/script@2026-01-01' = {
-  name: 'pythonLiteral'
+  name: 'cntr-pythonLiteral'
   shell: 'Python'
   env: {
     EnvVar: 'Set from Bicep'
@@ -56,20 +81,22 @@ result = {
 print(json.dumps(result))
   '''
   options: {
-    timeoutSeconds: 30
+    useContainer: true
+    containerImage: 'python:3.11-slim'
   }
   dependsOn: [pythonFile] 
 }
 
 resource scriptLiteral 'Flexor/script@2026-01-01' = {
-  name: 'scriptLiteral'
+  name: 'cntr-scriptLiteral'
   shell: 'PowerShell'
   contents: '''
 # This is a test script literal
 Write-Output "Hello from script literal!"
   '''
   options: {
-    timeoutSeconds: 30
+    useContainer: true
+    containerImage: 'mcr.microsoft.com/azure-powershell:latest'
   }
   dependsOn: [pwsh]
 }

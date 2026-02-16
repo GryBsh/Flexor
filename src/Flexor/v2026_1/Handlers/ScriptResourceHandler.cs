@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Flexor.v2026_1.Handlers;
 
-public class ScriptResourceHandler(ILogger<ScriptResourceHandler> logger) : TypedResourceHandler<ScriptResource, ResourceIdentifiers, FlexorOptions>
+public class ScriptResourceHandler(ILogger<ScriptResourceHandler> logger) : TypedResourceHandler<ScriptResource, ResourceIdentifiers, FlexorV2026_01_01_Options>
 {
 
     protected override ResourceIdentifiers GetIdentifiers(ScriptResource properties) 
@@ -26,7 +26,7 @@ public class ScriptResourceHandler(ILogger<ScriptResourceHandler> logger) : Type
     {
         var script = request.Properties;
         script.Shell ??= ShellType.Default;
-
+        
         _ = await ProcessExecutor.RunScriptAsync(
             script,
             request.Config,
@@ -42,7 +42,16 @@ public class ScriptResourceHandler(ILogger<ScriptResourceHandler> logger) : Type
                 ContinueOnFailure = script.Options.ContinueOnFailure ?? false,
                 Input = script.Contents is {} 
                     ? [ script.Contents ] 
-                    : []
+                    : [],
+                
+                UseContainer = script.Options.UseContainer,
+                ContainerImage = script.Options.ContainerImage,
+                ContainerCli = script.Options.ContainerCli,
+                ContainerCliArgs = script.Options.ContainerCliArgs,
+                ContainerMounts = script.Options.ContainerMounts,
+                WorkingPathMount = script.Options.WorkingPathMount,
+                FlexorPath = request.Config.FlexorPath,
+                NoWait = script.Options.NoWait
             },
             logger,
             cancellationToken: cancellationToken

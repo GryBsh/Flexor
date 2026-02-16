@@ -8,15 +8,18 @@ using LibGit2Sharp;
 namespace Flexor.v2026_1.Handlers;
 
 
-public class RepositoryResourceHandler(IGitClient gitClient) : TypedResourceHandler<RepositoryResource, RepositoryResourceIdentifiers, FlexorOptions>
+public class RepositoryResourceHandler(IGitClient gitClient) : TypedResourceHandler<RepositoryResource, RepositoryResourceIdentifiers, FlexorV2026_01_01_Options>
 {
     protected override RepositoryResourceIdentifiers GetIdentifiers(RepositoryResource properties) 
         => new()
         {
-            Name = properties.Name
+            Type = properties.Type,
+            Source = properties.Source,
+            Path = properties.Path,
+            Credential = properties.Credential
         };
 
-    protected override FlexorOptions GetConfig(string configJson)
+    protected override FlexorV2026_01_01_Options GetConfig(string configJson)
     {
         return base.GetConfig(configJson);
     }
@@ -43,7 +46,6 @@ public class RepositoryResourceHandler(IGitClient gitClient) : TypedResourceHand
         await Task.CompletedTask;
         var response = new RepositoryResource
         {
-            Name = request.Identifiers.Name,
             Type = request.Identifiers.Type,
             Source = request.Identifiers.Source,
             Path = request.Identifiers.Path
@@ -102,7 +104,6 @@ public class RepositoryResourceHandler(IGitClient gitClient) : TypedResourceHand
         {
             throw new ArgumentException("Either a valid existing git repository path must be provided to pull from, or a source URL must be provided to clone from.");
         }
-
     }
 
 }

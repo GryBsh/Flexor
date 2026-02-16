@@ -1,13 +1,16 @@
-﻿using Bicep.Local.Extension.Host.Handlers;
+﻿using System.Text.Json;
+using Bicep.Local.Extension.Host.Handlers;
 using Flexor.Executor;
+using Flexor.Options;
 using Flexor.v2026_1.Options;
 using Flexor.v2026_1.Resources;
+using Microsoft.Extensions.Logging;
 
 namespace Flexor.v2026_1.Handlers;
 
-public class CommandResourceHandler : TypedResourceHandler<CommandResource, CommandResourceIdentifiers, FlexorOptions>
+public class RunResourceHandler(ILogger<RunResourceHandler> logger) : TypedResourceHandler<RunResource, RunResourceIdentifiers, FlexorV2026_01_01_Options>()
 {
-    protected override CommandResourceIdentifiers GetIdentifiers(CommandResource properties) 
+    protected override RunResourceIdentifiers GetIdentifiers(RunResource properties) 
         => new()
         {
             Name = properties.Name
@@ -25,8 +28,8 @@ public class CommandResourceHandler : TypedResourceHandler<CommandResource, Comm
         {
             throw new ArgumentException("The 'Command' property must be provided for the exec step.", nameof(request));
         }
-
-        var result = await ProcessExecutor.StartProcessAsync(
+        
+        var result = await ProcessExecutor.RunAsync(
             resource: cmd,
             config: request.Config,
             new()
@@ -37,8 +40,17 @@ public class CommandResourceHandler : TypedResourceHandler<CommandResource, Comm
                 WorkingDirectory = cmd.Options.WorkingDirectory,
                 RunAsAdmin = cmd.Options.RunAsAdmin ?? false,
                 TimeoutSeconds = cmd.Options.TimeoutSeconds ?? 0,
-                ContinueOnFailure = cmd.Options.ContinueOnFailure ?? false
+                ContinueOnFailure = cmd.Options.ContinueOnFailure ?? false,
+                UseContainer = cmd.Options.UseContainer,
+                ContainerImage = cmd.Options.ContainerImage,
+                ContainerCli = cmd.Options.ContainerCli,
+                ContainerCliArgs = cmd.Options.ContainerCliArgs,
+                ContainerMounts = cmd.Options.ContainerMounts,
+                WorkingPathMount = cmd.Options.WorkingPathMount,
+                FlexorPath = request.Config.FlexorPath,
+                NoWait = cmd.Options.NoWait
             },
+            logger,
             cancellationToken: cancellationToken
         );
 
@@ -51,5 +63,7 @@ public class CommandResourceHandler : TypedResourceHandler<CommandResource, Comm
 
        
     }
+
+
 
 }

@@ -1,11 +1,10 @@
 [cmdletbinding()]
 param (
+    [string[]]$Test,
     [switch]$Trace,
     [switch]$Run,
     [switch]$Json
 )
-$CWD = $PWD;
-Set-Location -Path "$CWD/tests";
 
 function Write-BicepParams {
     param(
@@ -31,19 +30,28 @@ $(
 "@  | Out-File -FilePath $Path -Encoding UTF8 -Force;    
 }
 
-$tests = Get-Item -Path "*.test.bicep";
+$CWD = $PWD;
+$PBTS = $env:BICEP_TRACING_ENABLED;
+
+if ($Trace.IsPresent) {
+    $env:BICEP_TRACING_ENABLED = $true;
+    "" > .\trace.log;
+    code trace.log;
+
+}
+
+Set-Location -Path "$CWD/tests";
 
 if ($Trace.IsPresent -or $Run.IsPresent) {
-    foreach ($test in $tests) {
-        Write-BicepParams -TemplatePath $test.Name -Path "test.bicepparam" -Params @{}
+    foreach ($test in $Test) {
+        Write-Host "TESTS: Running test: $($test)";
+        Write-BicepParams -TemplatePath "$test.test.bicep" -Path "test.bicepparam" -Params @{}
         if ($Trace.IsPresent) {
-            $PBTS = $env:BICEP_TRACING_ENABLED;
-            $env:BICEP_TRACING_ENABLED = $true;    
             if ($Json.IsPresent) {
                 bicep local-deploy test.bicepparam --format json;
             }
             else {
-                bicep local-deploy test.bicepparam 1> $null;
+                bicep local-deploy test.bicepparam 1> $null 2> ../trace.log;
             }
         }
         elseif ($Run.IsPresent) {
@@ -57,8 +65,8 @@ if ($Trace.IsPresent -or $Run.IsPresent) {
     }
 }
 else {  
-    Import-Module Pester;
-    Invoke-Pester -Path ./tests.pester.ps1 -Output Detailed;
+    Set-Location -Path $CWD;
+    dotnet test;
 }
 
 if ($LASTEXITCODE -ne 0) {
@@ -67,13 +75,8 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE;
 }
 
-if ($Trace.IsPresent) {
-    if ($PBTS) {
-        $env:BICEP_TRACING_ENABLED = $PBTS;
-    }
-    else {
-        Remove-Item Env:\BICEP_TRACING_ENABLED;
-    }
+if ($PBTS -ne $env:BICEP_TRACING_ENABLED) {
+    $env:BICEP_TRACING_ENABLED = $PBTS;
 }
 
 Set-Location -Path $CWD;

@@ -1,10 +1,13 @@
 ﻿using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Flexor.Executor.Scripts;
 using Flexor.Options;
 using Flexor.Resources;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.ObjectPool;
 
 namespace Flexor.Executor;
 
@@ -13,14 +16,36 @@ namespace Flexor.Executor;
 /// </summary>
 public static partial class ProcessExecutor
 {
-    public const string StringOutputKey = "";
-    public const string ArrayOutputKey = "[]";
+    
+
+ 
+    const string ContainerCli = "docker";
+    static string[] ContainerCliArgs = [ "run", "--rm", "-i" ];
+
+    const string WorkingPathMount = "/workspace";
+    const string FlexorMount = "/.flexor";
+
+    public static void LogContainerOptions(ILogger logger, string location, ProcessStartOptions options)
+    {
+        /*
+        logger.LogInformation(
+            "Container @ {} : {} | {} {} {}",
+            location,
+            options.UseContainer,
+            options.UseContainer ? options.ContainerCli ?? "N/A" : "N/A",
+            options.UseContainer ? string.Join(" ", options.ContainerCliArgs ?? []) : "N/A",
+            options.UseContainer ? string.Join(" ", options.ContainerMounts?.Select(kv => $"{kv.Key}:{kv.Value}") ?? []) : "N/A"
+            
+        );
+        */
+    }
+
     
     #region Start Process
     /// <summary>
     /// Starts a process with the given context.
     /// </summary>
-    /// <param name="context">
+    /// <param name="options">
     /// The context for starting the process.
     /// </param>
     /// <param name="logger">
@@ -32,50 +57,66 @@ public static partial class ProcessExecutor
     /// <returns>
     /// A ProcessResult representing the outcome of the process execution.
     /// </returns>
-    public static async Task<ProcessResult> StartProcessAsync(
-        ProcessStartOptions context,
-        ILogger? logger = null,
+    public static async Task<ProcessResult> RunAsync(
+        ProcessStartOptions options,
+        ILogger logger,
         CancellationToken cancellationToken = default
-    )
+    ) 
     {
-       if (context.Command is null)
+       if (options.Command is null)
         {
             throw new ArgumentException("Command must be provided to run a process.");
         }
 
-        var timeout = context.TimeoutSeconds.HasValue 
-                      && context.TimeoutSeconds.Value > 0
-                    ? TimeSpan.FromSeconds(context.TimeoutSeconds.Value) 
+        var timeout = options.TimeoutSeconds.HasValue 
+                      && options.TimeoutSeconds.Value > 0
+                    ? TimeSpan.FromSeconds(options.TimeoutSeconds.Value) 
                     : Timeout.InfiniteTimeSpan;
         
+        var mounts = options.UseContainer ? options.ContainerMounts ?? [] : [];
+
+        mounts[options.WorkingDirectory ?? Environment.CurrentDirectory] = options.WorkingPathMount ?? WorkingPathMount;                     
+        mounts[options.FlexorPath ?? Path.Combine(Environment.CurrentDirectory, ".bicep/flexor")] = FlexorMount;
+
+        LogContainerOptions(logger, nameof(RunAsync), options);
+
         ProcessStartInfo startInfo = CreateProcessStartInfo(
-            context.Command.AsPath(),
-            context.Args,
-            context.WorkingDirectory,
-            context.Env ?? [],
-            context.RunAsAdmin
+            options.Command.AsPath(),
+            options.Args,
+            options.WorkingDirectory,
+            options.Env ?? [],
+            options.RunAsAdmin,
+            options.UseContainer,
+            new(
+                options.UseContainer ? options.ContainerCli : null,
+                options.UseContainer ? options.ContainerCliArgs : null,
+                options.UseContainer ? options.ContainerImage : null,
+                options.UseContainer ? mounts : null
+            )
         );
+
+        logger.LogInformation("Executing process. Command: {Command} {Arguments}", startInfo.FileName, string.Join(" ", startInfo.ArgumentList));
 
         using Process process = new() { StartInfo = startInfo };
         
         process.OutputDataReceived += (_, e) =>
         {
             var data = e.Data ?? string.Empty;
-            context.OutputHandler?.Invoke(data);
+            options.StdOutputHandler?.Invoke(data);
         };
         process.ErrorDataReceived += (_, e) =>
         {
             var data = e.Data ?? string.Empty;
-            context.ErrorHandler?.Invoke(data);
+            options.StdErrorHandler?.Invoke(data);
         };
                 
         process.Start();        
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        if (context.Input is not null && context.Input.Length > 0)
+        if (options.Input is not null && options.Input.Length > 0)
         {
-            foreach (var line in context.Input)
+            foreach (var line in options.Input)
             {
                 await process.StandardInput.WriteAsync(
                     RemoveWindowsLineEndings(line) + "\n"
@@ -86,7 +127,7 @@ public static partial class ProcessExecutor
 
         if (process.HasExited)
         {
-            logger?.LogWarning("Process exited immediately after starting. Command: {Command} {Arguments}", context.Command, string.Join(" ", context.Args));
+            logger.LogWarning("Process exited immediately after starting. Command: {Command} {Arguments}", options.Command, string.Join(" ", options.Args));
         } 
         else {
             await process.WaitForExitAsync(
@@ -113,7 +154,7 @@ public static partial class ProcessExecutor
             
         return new ProcessResult(success, process.ExitCode, isTimedOut, wasCancelled, shouldKill);
         
-        string RemoveWindowsLineEndings(string input)
+        static string RemoveWindowsLineEndings(string input)
             => input.Replace("\r\n", "\n").Replace("\r", "\n");
         
         /// <summary>
@@ -138,17 +179,20 @@ public static partial class ProcessExecutor
         /// A ProcessStartInfo object configured with the specified parameters.
         /// </returns>
         static ProcessStartInfo CreateProcessStartInfo(
-            string command, 
+            string fileName, 
             string[] arguments, 
             string? workingDirectory, 
             Dictionary<string, string>? environmentVariables, 
-            bool runAsAdmin
+            bool runAsAdmin, 
+            bool useContainer,
+            ContainerStartOptions? csInfo = null
         )
         {
             ProcessStartInfo startInfo = new()
             {
-                FileName = command,
-                Arguments = ConstructArguments(arguments),
+                FileName = useContainer 
+                            ? csInfo?.Cli ?? ContainerCli 
+                            : fileName,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 RedirectStandardInput = true,
@@ -160,13 +204,50 @@ public static partial class ProcessExecutor
             {
                 startInfo.Verb = "runas";
             }
+            if (useContainer)
+            {
+                foreach (var arg in csInfo?.Args ?? ContainerCliArgs)
+                {
+                    startInfo.ArgumentList.Add(arg);
+                }
+            }
 
             foreach (var env in environmentVariables ?? [])
             {
                 if (env.Key is not null && env.Value is not null)
                 {
-                    startInfo.Environment[env.Key] = env.Value.ToString() ?? string.Empty;
+                    if (useContainer)
+                    {
+                        // For containerized execution, prefix environment variables with -e
+                        startInfo.ArgumentList.Add("-e");
+                        startInfo.ArgumentList.Add($"{env.Key}={env.Value}");        
+                    }
+                    else { startInfo.Environment[env.Key] = env.Value.ToString() ?? string.Empty; }
                 }
+            }
+
+            if (useContainer && csInfo?.Mounts is not null)
+            {
+                foreach (var mount in csInfo.Mounts)
+                {
+                    startInfo.ArgumentList.Add("-v");
+                    startInfo.ArgumentList.Add($"{mount.Key}:{mount.Value.AsUnixPath()}");
+                }
+            }
+            
+            if (useContainer)
+            {
+                if (csInfo?.Image is null)
+                {
+                    throw new ArgumentException("Container image must be provided when using containerized execution.");
+                }
+                startInfo.ArgumentList.Add(csInfo.Image);
+                startInfo.ArgumentList.Add(fileName);
+            }
+            
+            foreach (var arg in arguments)
+            {
+                startInfo.ArgumentList.Add(arg);
             }
 
             return startInfo;            
@@ -181,19 +262,21 @@ public static partial class ProcessExecutor
         /// <returns>
         /// A string representing the command-line arguments.
         /// </returns>
-        static string ConstructArguments(string[] arguments)
-        {
-            return string.Join(" ", arguments.Select(arg => arg.Contains(' ') ? $"\"{arg}\"" : arg));
-        }
+        //static string ConstructArguments(string[] arguments)
+        //{
+        //    return string.Join(" ", arguments.Select(arg => arg.Contains(' ') ? $"\"{arg}\"" : arg));
+        //}
+
+
     }
 
     #endregion
 
-    #region StartProcess with Resource
+    #region Run with Resource
     /// <summary>
     /// Starts a process with the given context and configuration.
     /// </summary>
-    /// <typeparam name="T">
+    /// <typeparam name="TResource">
     /// The type of the resource to run, must implement IFlexorResource. 
     /// </typeparam>
     /// <param name="resource">
@@ -202,7 +285,7 @@ public static partial class ProcessExecutor
     /// <param name="config">
     /// The configuration for the Flexor environment.
     /// </param>
-    /// <param name="context">
+    /// <param name="options">
     /// The context for starting the process.
     /// </param>
     /// <param name="logger">
@@ -218,22 +301,22 @@ public static partial class ProcessExecutor
     /// <exception cref="InvalidOperationException">
     /// Thrown when the command invocation fails.
     /// </exception>
-    public static async Task<ProcessResult> StartProcessAsync<T>(
-        T resource,
-        FlexorBaseOptions config,
-        ProcessStartOptions context,
-        ILogger? logger = null,
+    public static async Task<ProcessResult> RunAsync<TResource>(
+        TResource resource,
+        FlexorOptions config,
+        ProcessStartOptions options,
+        ILogger logger,
         CancellationToken cancellationToken = default
-    )   where T : IFlexorResource
+    )   where TResource : IFlexorResource
     {
-        if (context.Command is null)
+        if (options.Command is null)
         {
             throw new ArgumentException("Command must be provided to run a process.");
         }
 
-        var timeout = context.TimeoutSeconds.HasValue 
-                      && context.TimeoutSeconds.Value > 0
-                    ? TimeSpan.FromSeconds(context.TimeoutSeconds.Value) 
+        var timeout = options.TimeoutSeconds.HasValue 
+                      && options.TimeoutSeconds.Value > 0
+                    ? TimeSpan.FromSeconds(options.TimeoutSeconds.Value) 
                     : Timeout.InfiniteTimeSpan;
 
         OutputDictionary? outputs = null;
@@ -249,43 +332,51 @@ public static partial class ProcessExecutor
             resource.CleanupLogs || config.LogOptions.DisableRollover
         );
 
-        Action<string> stdOutputHandler 
+        var originalOutputandler = options.StdOutputHandler;
+        var originalErrorHandler = options.StdErrorHandler;
+
+        options.StdOutputHandler
             = (value) =>
             {
                 if (outputs is { })
                 {
-                    HandleOutput(outputs, name, value);
+                    ParseOutput(outputs, name, value);
+                }
+                if (originalOutputandler is { } handler)
+                {
+                    handler(value);
                 }
                 if (resource.EnableLogging || config.LogOptions.Enabled)
-                    File.AppendAllText(stdOutFile, value + "\n");   
+                {
+                    WriteLog(stdOutFile, value);
+                }
             };
 
-        Action<string> stdErrorHandler 
+        options.StdErrorHandler 
             = (value) =>
             {
+                if (originalErrorHandler is { } handler)
+                {
+                    handler(value);
+                }
                 if (resource.EnableLogging || config.LogOptions.Enabled)
-                    File.AppendAllText(stdErrFile, value + "\n");        
+                {
+                    WriteLog(stdErrFile, value);
+                }
             };
-        context.Env = MergeEnvironment(
-            context,
-            config
-        );
-        //logger?.LogInformation("Starting process. Command: {Command} {Arguments}", context.Command, string.Join(" ", context.Args));
+        
+        if (!options.UseContainer)
+        {
+            options.Env = MergeEnvironment(
+                options,
+                config
+            );
+        }
+        
+        LogContainerOptions(logger, nameof(RunAsync)+"WithResource", options);
 
-        var result = await StartProcessAsync(
-            new ProcessStartOptions
-            {
-                Command = context.Command,
-                Args = context.Args,
-                WorkingDirectory = context.WorkingDirectory,
-                Env = context.Env,
-                Input = context.Input,
-                OutputHandler = stdOutputHandler,
-                ErrorHandler = stdErrorHandler,
-                RunAsAdmin = context.RunAsAdmin,
-                ContinueOnFailure = context.ContinueOnFailure,
-                TimeoutSeconds = context.TimeoutSeconds
-            },
+        var result = await RunAsync(
+            options,
             logger,
             cancellationToken
         );
@@ -296,7 +387,7 @@ public static partial class ProcessExecutor
         {
             throw new InvalidOperationException(
                 $"Command Invocation Failed.\n"+
-                $"Command: {context.Command.AsPath()} {string.Join(" ", context.Args)}\n" +
+                $"Command: {options.Command.AsPath()} {string.Join(" ", options.Args)}\n" +
                 $"Exit Code: {exitcode}.\n" +
                 $"See logs for more details:\n"+
                 $"StdOut: {stdOutFile.AsPath()}\n"+
@@ -306,158 +397,170 @@ public static partial class ProcessExecutor
         
         if (resource is IOutputResource outputResource && outputs is { })
         {
-            ApplyOutput(outputResource, name, outputs);
+            outputResource.Output = StrigifyOutput(name, outputs);
         }
 
         return result;
 
-        /// <summary>
-        /// Handles output data by determining its type and storing it appropriately.
-        /// </summary>
-        /// <param name="outputs">
-        /// The dictionary to store output data.
-        /// </param>
-        /// <param name="name">
-        /// The name of the resource.
-        /// </param>
-        /// <param name="data">
-        /// The output data to handle.
-        /// </param>
-        /// <param name="processStrings">
-        /// Whether to process string outputs.
-        /// </param>
-        /// <returns></returns>
-        static void HandleOutput(OutputDictionary outputs,string name, string data, bool processStrings = true)
+        static void WriteLog(string file, string line)
         {
-            var stepOutputs = outputs.GetValueOrDefault(name) ?? (outputs[name] = []);
-            data = data.Trim();
+            File.AppendAllLines(file, [AnsiConsoleCharacters().Replace(line, string.Empty)]);
+        }
+    }
 
-            var (isObject, isArray) = ResolveJsonType(data);
-            if (isObject || isArray)
-            {
-                if (isObject)
-                {
-                    var output = JsonSerializer.Deserialize<Any>(data)
-                                ?? throw new InvalidOperationException("Failed to deserialize output data to dictionary.");
-                    stepOutputs.Add(output);
-                }
-                else if (isArray)
-                {
-                    var output = JsonSerializer.Deserialize<List<object?>>(data)
-                                 ?? throw new InvalidOperationException("Failed to deserialize output data to list.");
+    #endregion
 
-                    stepOutputs.Add(new Any() { [ArrayOutputKey] = output });
-                }
-            }
-            else if (processStrings)
-            {
-                if (stepOutputs.Count == 0)
-                {
-                    stepOutputs.Add([]);
-                }
+    #region Output Handling
+    /// <summary>
+    /// Handles output data by determining its type and storing it appropriately.
+    /// </summary>
+    /// <param name="outputs">
+    /// The dictionary to store output data.
+    /// </param>
+    /// <param name="name">
+    /// The name of the resource.
+    /// </param>
+    /// <param name="data">
+    /// The output data to handle.
+    /// </param>
+    /// <param name="processStrings">
+    /// Whether to process string outputs.
+    /// </param>
+    /// <returns></returns>
+    public static void ParseOutput(OutputDictionary outputs, string name, string data, bool processStrings = true)
+    {
+        var current = outputs.GetValueOrDefault(name) ?? (outputs[name] = []);
+        data = data.Replace("\r", string.Empty)
+                   .Replace("\n", string.Empty);
 
-                if (stepOutputs[0].TryGetValue(StringOutputKey, out var existingText))
-                {
-                    //remove console characters \x1b[...m
-                    existingText = AnsiConsoleCharacters().Replace(existingText?.ToString() ?? string.Empty, string.Empty);
-                    
-                    stepOutputs[0][StringOutputKey] = existingText + "\n" + data;
-                }
-                else if (!string.IsNullOrWhiteSpace(data))
-                {
-                    stepOutputs[0][StringOutputKey] = data;
-                }
-            }           
-
-            static (bool IsObject, bool IsArray) ResolveJsonType(string input)
-            {
-                if (string.IsNullOrWhiteSpace(input))
-                    return (false, false);
-
-                return (IsJsonObject(input), IsJsonArray(input));
-                
-                static bool IsJsonObject(string input)
-                    => input.StartsWith('{')
-                    && input.EndsWith('}');   // Object
-            
-
-                static bool IsJsonArray(string input)
-                    => input.StartsWith('[')
-                    && input.EndsWith(']');  // Array
-            }
-        };
-
-        /// <summary>
-        /// Applies the output data to the resource.
-        /// </summary>
-        /// <param name="resource">
-        /// The resource to which the output will be applied.
-        /// </param>
-        /// <param name="name">
-        /// The name of the resource.
-        /// </param>
-        /// <param name="outputs">
-        /// The dictionary containing output data.
-        /// </param>
-        /// <returns></returns>
-        static void ApplyOutput(IOutputResource resource, string name, OutputDictionary outputs) 
+        var (_, isObject, isArray, _) = JsonType.Of(data.Trim());
+        if (isObject || isArray)
         {
-            var stepOutputs = outputs.GetValueOrDefault(name);
-            if (stepOutputs is null)
-                return;
-
-            List<(Type Type, object? Output)> outputList = [];
-            foreach (var outputDict in stepOutputs)
+            if (isObject)
             {
-                
-                if (outputDict.TryGetValue(ArrayOutputKey, out object? value))
-                {
-                    outputList.Add((typeof(object[]), value));
-                }
-                else if (
-                    outputDict.Count == 1 && outputDict.ContainsKey(StringOutputKey)
-                    && outputDict.TryGetValue(StringOutputKey, out var outputText) 
-                    && outputText?.ToString() is string text
-                    && !string.IsNullOrEmpty(text)
-                )
-                {
-                    if (outputList.FirstOrDefault().Type == typeof(string))
-                    {
-                        var existing = outputList[0].Output?.ToString() ?? string.Empty;
-                        outputList[0] = (typeof(string), existing + "\n" + text.Trim());
-                        continue;
-                    }
-                    outputList.Add((typeof(string), text.Trim()));
-                    
-                }
-                else if (outputDict.Count == 0)
-                {
-                    outputList.Add((typeof(string), string.Empty));
-                }
-                else
-                {
-                    outputList.Add((typeof(Any), outputDict));
-                }
+                var output = JsonSerializer.Deserialize<Any>(data)
+                            ?? throw new InvalidOperationException("Failed to deserialize output data to dictionary.");
+                current.Add(output);
             }
+            else if (isArray)
+            {
+                var output = JsonSerializer.Deserialize<List<object?>>(data)
+                             ?? throw new InvalidOperationException("Failed to deserialize output data to list.");
 
-            if (outputList.Count == 1)
-            {
-                if (outputList[0].Type == typeof(string))
-                {
-                    resource.Output = outputList[0].Output?.ToString() ?? string.Empty;
-                    return;
-                }
-                resource.Output = JsonSerializer.Serialize(outputList[0].Output);
-            }
-            else
-            {
-                resource.Output = JsonSerializer.Serialize<object?[]>([ ..outputList.Select(o => o.Output) ]);
+                current.Add(new Any() { [OutputDictionary.ArrayOutputKey] = output });
             }
         }
-    
+        else if (processStrings)
+        {
+            if (current.Count == 0)
+            {
+                current.Add([]);
+            }
+
+            if (current[0].TryGetValue(OutputDictionary.StringOutputKey, out var existingText))
+            {
+                //remove console characters \x1b[...m
+                existingText = AnsiConsoleCharacters().Replace(existingText?.ToString() ?? string.Empty, string.Empty);
+
+                current[0][OutputDictionary.StringOutputKey] = existingText + "\n" + data;
+            }
+            else if (!string.IsNullOrWhiteSpace(data))
+            {
+                current[0][OutputDictionary.StringOutputKey] = data;
+            }
+        }
     }
 
     
+
+    /// <summary>
+    /// Applies the output data to the resource.
+    /// </summary>
+    /// <param name="resource">
+    /// The resource to which the output will be applied.
+    /// </param>
+    /// <param name="name">
+    /// The name of the resource.
+    /// </param>
+    /// <param name="outputs">
+    /// The dictionary containing output data.
+    /// </param>
+    /// <returns></returns>
+    public static object? ResolveOutput(string name, OutputDictionary outputs)
+    {
+        var stepOutputs = outputs.GetValueOrDefault(name);
+        if (stepOutputs is null)
+            return null;
+
+        List<(Type Type, object? Output)> outputList = [];
+        foreach (var output in stepOutputs)
+        {
+            if (output.TryGetValue(OutputDictionary.ArrayOutputKey, out object? value))
+            {
+                outputList.Add((typeof(object[]), value));
+            }
+            else if (
+                output.Count == 1 && output.ContainsKey(OutputDictionary.StringOutputKey)
+                && output.TryGetValue(OutputDictionary.StringOutputKey, out var outputText)
+                && outputText is string text
+                && !string.IsNullOrEmpty(text)
+            )
+            {
+                if (outputList.FirstOrDefault().Type == typeof(string))
+                {
+                    var existing = outputList[0].Output?.ToString() ?? string.Empty;
+                    outputList[0] = (typeof(string), existing + "\n" + text.Trim());
+                    continue;
+                }
+                outputList.Add((typeof(string), text.Trim()));
+
+            }
+            else if (output.Count == 0)
+            {
+                outputList.Add((typeof(string), string.Empty));
+            }
+            else
+            {
+                outputList.Add((typeof(Any), output));
+            }
+        }
+
+        return outputList.Count == 1
+               ? outputList[0].Output
+               : outputList.Select(o => o.Output).ToArray();
+    }
+
+    public static string StrigifyOutput(string name, OutputDictionary outputs)
+    {
+        var output = ResolveOutput(name, outputs);
+        if (output is null) { return "{}"; }
+        
+        if (output is string strOutput)
+        {
+            return strOutput;
+        }
+        else if (output is IEnumerable<object> arrOutput)
+        {
+            var allStrings = arrOutput.All(o => o is string);
+            if (allStrings)
+            {
+                var strOutputs = string.Join("\n", arrOutput.Select(o => o?.ToString()));
+                var newOutputs = new OutputDictionary();
+                ParseOutput(newOutputs, name, strOutputs, processStrings: false);
+                var newOutput = ResolveOutput(name, newOutputs);
+                if (newOutput is { })
+                {
+                    return StrigifyOutput(name, newOutputs);
+                }
+            }
+            return JsonSerializer.Serialize(arrOutput);
+        }
+        else
+        {
+            return JsonSerializer.Serialize(output);
+        }
+    }
+
     #endregion
 
     #region Run Script
@@ -474,7 +577,7 @@ public static partial class ProcessExecutor
     /// <param name="config">
     /// The Flexor environment configuration. 
     /// </param>
-    /// <param name="context">
+    /// <param name="options">
     /// The context for the script run.
     /// </param>
     /// <param name="logger">
@@ -489,37 +592,42 @@ public static partial class ProcessExecutor
     /// </exception>
     public static async Task<ProcessResult> RunScriptAsync<T>(
         T resource,
-        FlexorBaseOptions? config,
-        ScriptRunOptions context,
-        ILogger? logger = null,
+        FlexorOptions? config,
+        ScriptRunOptions options,
+        ILogger logger,
         CancellationToken cancellationToken = default
     )   where T : IFlexorResource, IOutputResource
     {
-        if (context.Path is null && context.Input is null or { Length: 0 })
+        if (options.Path is null && options.Input is null or { Length: 0 })
         {
             throw new ArgumentException("Either 'script' or 'contents' must be provided for script execution.");
         }
-        if (context.Path is not null && context.Input is { Length: > 0 })
+        if (options.Path is not null && options.Input is { Length: > 0 })
         {
             throw new ArgumentException("Only one of 'script' or 'contents' can be provided for script execution.");
         }
         
-        config ??= new FlexorBaseOptions();
-        context.ShellType = ResolveShellType(context.ShellType);
-        context.Command = ResolveShellCommand(context.ShellType); 
-        context.Args = ResolveShellArguments(context);
+        config ??= new FlexorOptions();
+        options.ShellType = ResolveShellType(options.ShellType);
+        options.Command = ResolveShellCommand(options.ShellType); 
+        options.Args = ResolveShellArguments(options);
 
-        context.Env = MergeEnvironment(context, config);
-
-        if (context.ShellType is ShellType.PowerShell)
+        if (!options.UseContainer)
         {
-            context = AddPowerShell(context, config);
+            options.Env = MergeEnvironment(options, config);
         }
 
-        return await StartProcessAsync(
+        if (options.ShellType is ShellType.PowerShell)
+        {
+            options = AddPowerShell(options, config);
+        }
+
+        LogContainerOptions(logger, nameof(RunScriptAsync), options);
+        
+        return await RunAsync(
             resource,
             config,
-            context,
+            options,
             logger,
             cancellationToken
         );
@@ -579,49 +687,49 @@ public static partial class ProcessExecutor
         /// <returns>
         /// An array of strings representing the resolved shell arguments.
         /// </returns>
-        static string[] ResolveShellArguments(ScriptRunOptions context)
+        static string[] ResolveShellArguments(ScriptRunOptions options)
         {
-            string[] shellArgs = context.ShellType switch
+            string[] shellArgs = options.ShellType switch
             {
                 var cmd when cmd == ShellType.Cmd
-                    && context.Path is not null
-                    => ["/c", $"\"{context.Path}\""],
+                    && options.Path is not null
+                    => ["/c", $"\"{options.Path}\""],
                 var ps when ps == ShellType.PowerShell
-                    && context.Path is not null
-                    => ["-File", context.Path],
+                    && options.Path is not null
+                    => ["-File", options.Path],
                 var ps when ps == ShellType.PowerShell
-                    && context.Path is null
-                    && context.Args is { Length: > 0 }
+                    && options.Path is null
+                    && options.Args is { Length: > 0 }
                     => throw new ArgumentException(" You cannot use arguments eith PowerShell literals"),
                 var ps when ps == ShellType.PowerShell
-                    && context.Path is null
+                    && options.Path is null
                     => ["-Command", "-"],
                 var bash when bash == ShellType.Bash
-                    && context.Path is not null
-                    => ["-c", "--", context.Path],
+                    && options.Path is not null
+                    => ["-c", "--", options.Path],
                 var bash when bash == ShellType.Bash
-                    && context.Path is null
-                    && context.Args is { Length: > 0 }
+                    && options.Path is null
+                    && options.Args is { Length: > 0 }
                     => ["-s", "--"],
                 var bash when bash == ShellType.Bash
-                    && context.Path is null
+                    && options.Path is null
                     => ["-s"],
                 var python when python == ShellType.Python
-                    && context.Path is null
-                    && context.Args is { Length: > 0 }
+                    && options.Path is null
+                    && options.Args is { Length: > 0 }
                     => throw new ArgumentException(" You cannot use arguments with Python literals"),
                 var python when python == ShellType.Python
-                    && context.Path is not null
-                    => [context.Path],
+                    && options.Path is not null
+                    => [options.Path],
                 var python when python == ShellType.Python
-                    && context.Path is null
+                    && options.Path is null
                     => ["-"],
                 _ => throw new ArgumentException("Shell type must be one of Cmd, PowerShell, Bash, or Python.") 
             };
 
             return [ 
                 ..shellArgs, 
-                ..context.Args ?? [] 
+                ..options.Args ?? [] 
             ];
         }
 
@@ -637,35 +745,55 @@ public static partial class ProcessExecutor
         /// <returns>
         /// The updated script run context with PowerShell environment variables added.
         /// </returns>
-        static ScriptRunOptions AddPowerShell(ScriptRunOptions context, FlexorBaseOptions config)
+        static ScriptRunOptions AddPowerShell(ScriptRunOptions options, FlexorOptions config)
         {
-            context.Env ??= [];
-            var psModuleDir = new DirectoryInfo(Path.Combine(config.PathRoot, PwshConstants.PSModulesFolderName));
-            var existing = Environment.GetEnvironmentVariable(PwshConstants.PSModulePathEnvVar) ?? string.Empty;
-            var value = context.Env.GetValueOrDefault(PwshConstants.PSModulePathEnvVar) ?? string.Empty;
-
-            string[] values = (existing, value, psModuleDir.Exists) switch
+            options.Env ??= [];
+            if (options.UseContainer)
             {
-                (_, _, true) when !string.IsNullOrWhiteSpace(existing) && !string.IsNullOrWhiteSpace(value)
-                    => [existing, value.AsPath(), psModuleDir.FullName.AsPath()],
-                (_, _, true) when !string.IsNullOrWhiteSpace(existing)
-                    => [existing, psModuleDir.FullName.AsPath()],
-                (_, _, true) when !string.IsNullOrWhiteSpace(value)
-                    => [value.AsPath(), psModuleDir.FullName.AsPath()],
-                (_, _, true)
-                    => [psModuleDir.FullName.AsPath()],
+                options.Env[PwshConstants.PSModulePathEnvVar] 
+                    = Path.Combine(
+                        FlexorMount,
+                        PwshConstants.PSModulesFolderName
+                      ).AsUnixPath();
+
+                return options;
+            }
+
+            var psModuleDir = new DirectoryInfo(Path.Combine(config.FlexorPath, PwshConstants.PSModulesFolderName));
+            var existing = Environment.GetEnvironmentVariable(PwshConstants.PSModulePathEnvVar) ?? string.Empty;
+            var value = options.Env.GetValueOrDefault(PwshConstants.PSModulePathEnvVar) ?? string.Empty;
+
+            var psModulePath = options.UseContainer
+                ? Path.Combine(
+                    FlexorMount,
+                    PwshConstants.PSModulesFolderName
+                  ).AsUnixPath()
+                : psModuleDir.FullName.AsPath();
+
+            string[] values = psModuleDir.Exists switch
+            {
+                true when !string.IsNullOrWhiteSpace(existing) && !string.IsNullOrWhiteSpace(value)
+                    => [existing, value.AsPath(), psModulePath],
+                true when !string.IsNullOrWhiteSpace(existing)
+                    => [existing, psModulePath],
+                true when !string.IsNullOrWhiteSpace(value)
+                    => [value.AsPath(), psModulePath],
+                true
+                    => [psModulePath],
                 _ => []
             };
 
             // Special handling for PowerShell module path, never overwrite, always append
-            context.Env[PwshConstants.PSModulePathEnvVar] = existing.AppendPath(values);
-            return context;
+            options.Env[PwshConstants.PSModulePathEnvVar] = existing.AppendPath(values);
+
+            return options;
         }
     }
 
     #endregion
 
-    #region Helpers
+    #region Environment
+
     /// <summary>
     /// Merges the environment variables from the process context and the Flexor configuration.
     /// </summary>
@@ -680,7 +808,7 @@ public static partial class ProcessExecutor
     /// </returns>
     static Dictionary<string, string> MergeEnvironment(
         ProcessStartOptions context, 
-        FlexorBaseOptions config
+        FlexorOptions config
     ) {
         context.Env ??= [];
         var env = new Dictionary<string, string>(context.Env);

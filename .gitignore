@@ -1,11 +1,22 @@
 src/**/bin
+/bin/
 **/obj
 *.user
 *.suo
-*.log
 *.tmp
 .vs/
+/.nuget/
+/nuget.config
 
+# Build outputs
+/.bicep/
+**/*.zip
+
+# Logs
+/logs/
+**/*.log
+
+# Test results
 tests/*.az.json
 tests/test/
 tests/test-*/
@@ -13,13 +24,12 @@ tests/output/
 tests/*-test/
 tests/.flexor/
 tests/test.bicepparam
+# Clone tests
+/repos/
 
+# Temporary files
+**/*.out
+**/*.err
 __**__.json
 
 .fake
-/.bicep/
-/.nuget/
-/nuget.config
-
-/repos/
-*.zip

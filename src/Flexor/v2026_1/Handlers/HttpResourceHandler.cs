@@ -6,12 +6,17 @@ using System.Text;
 
 namespace Flexor.v2026_1.Handlers;
 
-public class HttpResourceHandler : TypedResourceHandler<HttpResource, HttpResourceProperties, FlexorOptions>
+public class HttpResourceHandler : TypedResourceHandler<HttpResource, HttpResourceIdentifiers, FlexorV2026_01_01_Options>
 {
-    protected override HttpResourceProperties GetIdentifiers(HttpResource properties) 
+    protected override HttpResourceIdentifiers GetIdentifiers(HttpResource properties) 
         => new()
         {
-            Name = properties.Name
+            Url = properties.Url,
+            Headers = properties.Headers,
+            Query = properties.Query,
+            ExpectedStatusCodes = properties.ExpectedStatusCodes,
+            Options = properties.Options,
+            Authorization = properties.Authorization
         };
     protected override async Task<ResourceResponse> Preview(ResourceRequest request, CancellationToken cancellationToken)
     {
@@ -22,10 +27,12 @@ public class HttpResourceHandler : TypedResourceHandler<HttpResource, HttpResour
     protected override Task<ResourceResponse> Get(ReferenceRequest request, CancellationToken cancellationToken)
     {
         var resource = new HttpResource{
-            Name = request.Identifiers.Name,
             Url = request.Identifiers.Url,
             Headers = request.Identifiers.Headers,
-            TimeoutSeconds = request.Identifiers.TimeoutSeconds
+            Query = request.Identifiers.Query,
+            ExpectedStatusCodes = request.Identifiers.ExpectedStatusCodes,
+            Options = request.Identifiers.Options,
+            Authorization = request.Identifiers.Authorization
         };
 
         return InvokeHttpRequest(
@@ -47,7 +54,7 @@ public class HttpResourceHandler : TypedResourceHandler<HttpResource, HttpResour
 
     protected async Task<ResourceResponse> InvokeHttpRequest(
         HttpResource resource, 
-        FlexorOptions config,
+        FlexorV2026_01_01_Options config,
         CancellationToken cancellationToken
     )
     {
@@ -60,27 +67,33 @@ public class HttpResourceHandler : TypedResourceHandler<HttpResource, HttpResour
         var handler = new HttpClientHandler()
         {
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
-            ServerCertificateCustomValidationCallback = resource.IgnoreSslErrors ? HttpClientHandler.DangerousAcceptAnyServerCertificateValidator : null,
-            AllowAutoRedirect = resource.FollowRedirects,
-            Credentials = resource.Credentials is not null 
+            ServerCertificateCustomValidationCallback = resource.Options.IgnoreSslErrors ? HttpClientHandler.DangerousAcceptAnyServerCertificateValidator : null,
+            AllowAutoRedirect = resource.Options.FollowRedirects,
+            Credentials = resource.Authorization?.Credential is not null 
                 ? new NetworkCredential(
-                    resource.Credentials.Username, 
-                    resource.Credentials.StringPassword
+                    resource.Authorization.Credential.Username, 
+                    resource.Authorization.Credential.StringPassword
                   ) 
                 : null            
         };
         
         var httpClient = new HttpClient(handler)
         {
-            Timeout = TimeSpan.FromSeconds(resource.TimeoutSeconds),   
+            Timeout = TimeSpan.FromSeconds(resource.Options.TimeoutSeconds),   
             DefaultRequestHeaders =
             {
-                Authorization = resource.Credentials is not null 
+                Authorization = 
+                    resource.Authorization?.BearerToken is not null
+                    ? new System.Net.Http.Headers.AuthenticationHeaderValue(
+                        "Bearer", 
+                        resource.Authorization.StringBearerToken
+                    ) 
+                    : resource.Authorization?.Credential is not null 
                     ? new System.Net.Http.Headers.AuthenticationHeaderValue(
                         "Basic", 
                         Convert.ToBase64String(
                             Encoding.UTF8.GetBytes(
-                                $"{resource.Credentials.Username}:{resource.Credentials.StringPassword}"
+                                $"{resource.Authorization.Credential.Username}:{resource.Authorization.Credential.StringPassword}"
                             )
                         )
                       ) 
@@ -94,9 +107,20 @@ public class HttpResourceHandler : TypedResourceHandler<HttpResource, HttpResour
             httpClient.DefaultRequestHeaders.Add(header.Name!, header.Value);
         }
 
+        var url = new UriBuilder(resource.Url!);
+        if (resource.Query.Length > 0)
+        {
+            var query = System.Web.HttpUtility.ParseQueryString(url.Query);
+            foreach (var param in resource.Query.Where(q => !string.IsNullOrWhiteSpace(q.Name)))
+            {
+                query[param.Name!] = param.Value;
+            }
+            url.Query = query.ToString() ?? string.Empty;
+        }
+
         HttpRequestMessage httpRequest = new(
-            new HttpMethod(resource.Method),
-            resource.Url
+            new HttpMethod(resource.Method) ,
+            url.ToString()
         );
 
         if (resource.Body != null)
@@ -120,8 +144,25 @@ public class HttpResourceHandler : TypedResourceHandler<HttpResource, HttpResour
         var response = await httpClient.SendAsync(httpRequest, cancellationToken);
         response.EnsureSuccessStatusCode();
         resource.StatusCode = (int)response.StatusCode;
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-        resource.Output = responseBody;
+
+        if (!resource.ExpectedStatusCodes.Contains(resource.StatusCode))
+        {
+            throw new HttpRequestException(
+                $"Unexpected status code {resource.StatusCode} received from {resource.Url}.\n" +
+                $"Expected status codes: {string.Join(", ", resource.ExpectedStatusCodes)}"
+            );
+        }
+
+        if (!string.IsNullOrWhiteSpace(resource.DownloadPath))
+        {
+            var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            await File.WriteAllBytesAsync(resource.DownloadPath, responseBytes, cancellationToken);
+        }
+        else {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            resource.Output = responseBody;
+        }
+        
         return GetResponse(new() { 
             Type = HttpResource.ResourceType, 
             Properties = resource, 
