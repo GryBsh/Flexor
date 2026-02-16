@@ -525,9 +525,25 @@ public static partial class ProcessExecutor
             }
         }
 
-        return outputList.Count == 1
-               ? outputList[0].Output
-               : outputList.Select(o => o.Output).ToArray();
+        if (outputList.Count == 1)
+        {
+            var singleOutput = outputList[0].Output;
+            // If the output is a string, try to parse it as JSON
+            if (singleOutput is string strOutput && !string.IsNullOrWhiteSpace(strOutput))
+            {
+                var (_, isObject, isArray, _) = JsonType.Of(strOutput.Trim());
+                if (isObject)
+                {
+                    return JsonSerializer.Deserialize<Any>(strOutput);
+                }
+                else if (isArray)
+                {
+                    return JsonSerializer.Deserialize<List<object?>>(strOutput);
+                }
+            }
+            return singleOutput;
+        }
+        return outputList.Select(o => o.Output).ToArray();
     }
 
     public static string StrigifyOutput(string name, OutputDictionary outputs)
