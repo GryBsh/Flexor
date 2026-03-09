@@ -16,6 +16,7 @@ public class UnitTest1
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task CommandTest()
     {
         Helpers.SetWorkingDirectory();
@@ -23,13 +24,14 @@ public class UnitTest1
         var results = await Helpers.RunBicepLocalDeploy("Command","test.bicepparam", NullLogger.Instance);
 
         Assert.NotNull(results);
-        Assert.Equal(results["bicepOutputLength"], 0);
+        Assert.Equal(0, results["bicepOutputLength"]);
         var expectedAssets = ListAssets().Split('\n').OrderBy(x => x).ToArray();
         var actualAssets = ((string)results["stringOutput"]!).Split('\n').OrderBy(x => x).ToArray();
         Assert.Equal(expectedAssets, actualAssets);
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task GitTest()
     {
         Helpers.SetWorkingDirectory();
@@ -42,6 +44,7 @@ public class UnitTest1
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task HttpTest()
     {
         Helpers.SetWorkingDirectory();
@@ -53,6 +56,7 @@ public class UnitTest1
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task ScriptTest()
     {
         Helpers.SetWorkingDirectory();
@@ -73,6 +77,7 @@ public class UnitTest1
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task ContainerTest()
     {
         Helpers.SetWorkingDirectory();
@@ -93,6 +98,7 @@ public class UnitTest1
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task ModulesTest()
     {
         Helpers.SetWorkingDirectory();

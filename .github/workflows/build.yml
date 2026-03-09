@@ -19,7 +19,7 @@ jobs:
 
     - name: Run Tests
       run: |
-        dotnet test --verbosity normal
+        dotnet test --verbosity normal --filter "Category!=Integration"
       shell: bash
 
     - name: Zip Artifacts

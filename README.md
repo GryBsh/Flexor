@@ -301,5 +301,6 @@ Integration tests require the Bicep CLI and will execute `bicep local-deploy` ag
 
 ## Known Issues
 
-- PowerShell and Python scripts do not execute under GitHub Actions
-  - Investigating environment setup issues for CI test execution
+- Integration tests (PowerShell, Python, Docker, Git) are excluded from CI via `[Trait("Category", "Integration")]`
+  - GitHub Actions kills spawned PowerShell and Python processes
+  - Run `dotnet test` locally without `--filter` to execute the full suite
