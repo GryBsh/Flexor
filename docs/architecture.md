@@ -164,7 +164,7 @@ The entry point (`Program.cs`) registers all components with the Bicep extension
 ```csharp
 builder.Services
     .AddBicepExtension()
-    .WithExtensionInfo(name: "Flexor", version: "0.1.2026.1", isSingleton: true)
+    .WithExtensionInfo(name: "Flexor", version: "0.2.2026.1", isSingleton: true)
     .WithResourceHandler<RunResourceHandler>()
     .WithResourceHandler<ScriptResourceHandler>()
     .WithResourceHandler<RepositoryResourceHandler>()

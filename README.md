@@ -3,7 +3,7 @@
 A Bicep extension to flexibly run scripts, commands, HTTP requests, and git operations during local deployments.
 
 ```yaml
-version: 0.1.2026.1
+version: 0.2.2026.1
 ```
 
 ## Why?

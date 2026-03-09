@@ -25,7 +25,7 @@ builder.Services
        .AddBicepExtension()
        .WithExtensionInfo(
             name: "Flexor",
-            version: "0.1.2026.1",
+            version: "0.2.2026.1",
             isSingleton: true
        )
        .WithTypeProvider<TypeProvider>()

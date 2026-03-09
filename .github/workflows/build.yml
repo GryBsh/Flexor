@@ -1,5 +1,5 @@
 name: Build and Test Flexor
-on: 
+on:
   workflow_dispatch:
   release:
     types: [ created, published ]
@@ -11,31 +11,41 @@ jobs:
 
     - name: Setup PowerShell
       uses: PSModule/install-powershell@v1
-      
-    #- name: Install Pester
-    #  run: Install-Module -Name Pester -Force -SkipPublisherCheck
-    #  shell: pwsh
 
     - name: Build Flexor
       run: |
         ./build.ps1
       shell: pwsh
 
-    # Until I can figure out why Actions is killing pwsh and python processes  
-    #- name: Run Tests
-    #  run: |
-    #    ./test.ps1 -Run;
-    #    Remove-Item .bicep/flexor/logs -Recurse -Force -ErrorAction SilentlyContinue;
-    #  shell: pwsh
-  
+    - name: Run Tests
+      run: |
+        dotnet test --verbosity normal
+      shell: bash
+
     - name: Zip Artifacts
       run: |
-        zip -r flexor.zip bicepconfig.json .bicep 
+        zip -r flexor.zip bicepconfig.json .bicep
       shell: bash
-    
-    - name: Release
-      uses: softprops/action-gh-release@v2
-      if: startsWith(github.ref, 'refs/tags/')
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
       with:
-        files: '*.zip'
-        token: ${{ secrets.TOKEN }}
+        name: flexor-release
+        path: flexor.zip
+
+  add-release-assets:
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: Download Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: flexor-release
+
+    - name: Upload Release Asset
+      uses: softprops/action-gh-release@v2
+      with:
+        files: flexor.zip
