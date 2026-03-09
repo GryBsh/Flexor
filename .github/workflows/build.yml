@@ -2,7 +2,7 @@ name: Build and Test Flexor
 on:
   workflow_dispatch:
   release:
-    types: [ created, published ]
+    types: [ created ]
 jobs:
   build:
     runs-on: ubuntu-latest

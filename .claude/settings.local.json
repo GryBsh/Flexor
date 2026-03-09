@@ -9,7 +9,11 @@
       "Bash(dotnet list:*)",
       "*",
       "Bash(dotnet add:*)",
-      "Bash(dotnet build:*)"
+      "Bash(dotnet build:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh release:*)"
     ]
   }
 }
