@@ -67,4 +67,13 @@ public class ProcessStartOptions
     public AppendedVariable[] AppendEnvVars { get; set; } = [];
     
     public string? FlexorPath {get; set; }
+
+    /// <summary>
+    /// When true, captures the raw standard output stream into ProcessResult.RawOutput.
+    /// The raw output preserves the exact bytes from the process, unlike the line-by-line
+    /// StdOutputHandler which splits on newlines and can break multi-line JSON documents.
+    /// Note: When enabled, StdOutputHandler is invoked post-process (batched) rather than
+    /// streaming in real-time. RawOutput is null when this option is not enabled.
+    /// </summary>
+    public bool CaptureRawOutput { get; set; } = false;
 }

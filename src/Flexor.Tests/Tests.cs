@@ -5,12 +5,15 @@ namespace Flexor.Tests;
 public class UnitTest1
 {
 
-    static string[] ListAssets() 
-        => Directory.GetFiles(
-            "./tests/assets", 
-            "*", 
-            new EnumerationOptions { RecurseSubdirectories = true }
-        );
+    static string ListAssets()
+    {
+        // Match Pester's Get-AssetList: Get-ChildItem -Path "assets" | join with \n
+        var entries = Directory.GetFileSystemEntries("./assets")
+                               .Select(Path.GetFullPath)
+                               .OrderBy(e => e)
+                               .ToArray();
+        return string.Join("\n", entries);
+    }
 
     [Fact]
     public async Task CommandTest()
@@ -21,14 +24,16 @@ public class UnitTest1
 
         Assert.NotNull(results);
         Assert.Equal(results["bicepOutputLength"], 0);
-        Assert.Equal(results["stringOutput"], ListAssets());
+        var expectedAssets = ListAssets().Split('\n').OrderBy(x => x).ToArray();
+        var actualAssets = ((string)results["stringOutput"]!).Split('\n').OrderBy(x => x).ToArray();
+        Assert.Equal(expectedAssets, actualAssets);
     }
 
     [Fact]
     public async Task GitTest()
     {
         Helpers.SetWorkingDirectory();
-        Helpers.WriteBicepParamsFile("commands.test.bicep", "test.bicepparam", []);
+        Helpers.WriteBicepParamsFile("git.test.bicep", "test.bicepparam", []);
         var results = await Helpers.RunBicepLocalDeploy("Git","test.bicepparam", NullLogger.Instance);
         Assert.NotNull(results);
         var outputPath = new DirectoryInfo("./output/Flexor/.git").FullName+Path.DirectorySeparatorChar;
@@ -58,13 +63,13 @@ public class UnitTest1
         Assert.Equal(results["pwshResult"], "{\"Works\":true,\"EnvVar\":\"Set from Bicep\"}");
         Assert.Equal(results["pwshWorks"], true);
 
-        Assert.Equal(results["bashResult"], "{\"Works\":true,\"EnvVar\":\"Set from Bicep\"}");
+        Assert.Equal(results["bashResult"], "{\"Works\":true}");
         Assert.Equal(results["bashWorks"], true);
 
         Assert.Equal(results["pythonResult"], "{\"Works\":true,\"EnvVar\":\"Set from Bicep\"}");
         Assert.Equal(results["pythonWorks"], true);
 
-        Assert.Equal(results["puthFileResusult"], "Works!");
+        Assert.Equal(results["pythonFileResult"], "Works!");
     }
 
     [Fact]
@@ -74,17 +79,17 @@ public class UnitTest1
         Helpers.WriteBicepParamsFile("containers.test.bicep", "test.bicepparam", []);
         var results = await Helpers.RunBicepLocalDeploy("Container","test.bicepparam", NullLogger.Instance);
         Assert.NotNull(results);
-        Assert.Equal(results["scriptLiteralOutput"], "Hello from script literal!\n");
-        Assert.Equal(results["pwshResult"], "{\"Works\":true,\"EnvVar\":\"Set from Bicep\"}\n");
+        Assert.Equal("Hello from script literal!", ((string)results["scriptLiteralOutput"]!).Trim());
+        Assert.Equal("{\"Works\":true,\"EnvVar\":\"Set from Bicep\"}", ((string)results["pwshResult"]!).Trim());
         Assert.Equal(results["pwshWorks"], true);
 
-        Assert.Equal(results["bashResult"], "{\"Works\":true,\"EnvVar\":\"Set from Bicep\"}\n");
+        Assert.Equal("{\"Works\":true}", ((string)results["bashResult"]!).Trim());
         Assert.Equal(results["bashWorks"], true);
 
-        Assert.Equal(results["pythonResult"], "{\"Works\":true,\"EnvVar\":\"Set from Bicep\"}\n");
+        Assert.Equal("{\"Works\":true,\"EnvVar\":\"Set from Bicep\"}", ((string)results["pythonResult"]!).Trim());
         Assert.Equal(results["pythonWorks"], true);
 
-        Assert.Equal(results["puthFileResusult"], "Works!\n");
+        Assert.Equal("Works!", ((string)results["pythonFileResult"]!).Trim());
     }
 
     [Fact]

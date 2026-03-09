@@ -19,7 +19,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Azure.Bicep.Local.Extension" Version="0.40.2" />
+		<PackageReference Include="Azure.Bicep.Local.Extension" Version="0.41.2" />
 	</ItemGroup>
 
 </Project>

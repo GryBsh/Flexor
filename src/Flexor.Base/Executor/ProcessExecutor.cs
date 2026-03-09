@@ -98,61 +98,106 @@ public static partial class ProcessExecutor
         logger.LogInformation("Executing process. Command: {Command} {Arguments}", startInfo.FileName, string.Join(" ", startInfo.ArgumentList));
 
         using Process process = new() { StartInfo = startInfo };
-        
-        process.OutputDataReceived += (_, e) =>
-        {
-            var data = e.Data ?? string.Empty;
-            options.StdOutputHandler?.Invoke(data);
-        };
+        var stopwatch = Stopwatch.StartNew();
+
+        Task<string>? rawOutputTask = null;
+
         process.ErrorDataReceived += (_, e) =>
         {
             var data = e.Data ?? string.Empty;
             options.StdErrorHandler?.Invoke(data);
         };
-                
-        process.Start();        
-        process.BeginOutputReadLine();
+
+        process.Start();
+
+        if (options.CaptureRawOutput)
+        {
+            // Read stdout as a raw stream to preserve exact bytes.
+            // This avoids BeginOutputReadLine splitting on newlines,
+            // which can break multi-line JSON documents.
+            rawOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        }
+        else
+        {
+            process.OutputDataReceived += (_, e) =>
+            {
+                var data = e.Data ?? string.Empty;
+                options.StdOutputHandler?.Invoke(data);
+            };
+            process.BeginOutputReadLine();
+        }
+
         process.BeginErrorReadLine();
 
         if (options.Input is not null && options.Input.Length > 0)
         {
-            foreach (var line in options.Input)
+            try
             {
-                await process.StandardInput.WriteAsync(
-                    RemoveWindowsLineEndings(line) + "\n"
-                );
+                foreach (var line in options.Input)
+                {
+                    await process.StandardInput.WriteAsync(
+                        RemoveWindowsLineEndings(line) + "\n"
+                    );
+                }
             }
-            process.StandardInput.Close();
+            finally
+            {
+                process.StandardInput.Close();
+            }
         }
 
         if (process.HasExited)
         {
             logger.LogWarning("Process exited immediately after starting. Command: {Command} {Arguments}", options.Command, string.Join(" ", options.Args));
-        } 
+        }
         else {
-            await process.WaitForExitAsync(
-                CancellationTokenSource.CreateLinkedTokenSource(
-                    cancellationToken,
-                    timeout == Timeout.InfiniteTimeSpan 
-                    ? CancellationToken.None 
-                    : new CancellationTokenSource(timeout).Token
-                ).Token
+            using var timeoutCts = timeout == Timeout.InfiniteTimeSpan
+                ? null
+                : new CancellationTokenSource(timeout);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                timeoutCts?.Token ?? CancellationToken.None
             );
+            await process.WaitForExitAsync(linkedCts.Token);
         }
 
-        await Task.Delay(250, cancellationToken); // Ensure all output is flushed
-        
+        string? rawOutput = null;
+        if (rawOutputTask is not null)
+        {
+            rawOutput = await rawOutputTask;
+            // Fire the per-line handler with the raw output for compatibility.
+            // This fires post-process (batched) rather than streaming.
+            if (options.StdOutputHandler is { } handler)
+            {
+                var lines = rawOutput.Split('\n');
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    var line = lines[i].TrimEnd('\r');
+                    if (i == lines.Length - 1 && line.Length == 0) break;
+                    handler(line);
+                }
+            }
+        }
+
+        if (!options.CaptureRawOutput)
+        {
+            await Task.Delay(250, cancellationToken); // Allow async stderr callbacks to drain
+        }
+
         bool shouldKill = process.HasExited is false;
-        bool isTimedOut = timeout != Timeout.InfiniteTimeSpan 
-                          && process.StartTime.Add(timeout) < DateTime.Now;
+        bool isTimedOut = timeout != Timeout.InfiniteTimeSpan
+                          && stopwatch.Elapsed >= timeout;
         bool wasCancelled = cancellationToken.IsCancellationRequested;
         bool nonZeroExitCode = process.ExitCode != 0;
-       
+
         if (shouldKill) { process.Kill(true); }
 
-        bool success = !( nonZeroExitCode || isTimedOut || shouldKill || wasCancelled ); 
-            
-        return new ProcessResult(success, process.ExitCode, isTimedOut, wasCancelled, shouldKill);
+        bool success = !( nonZeroExitCode || isTimedOut || shouldKill || wasCancelled );
+
+        return new ProcessResult(success, process.ExitCode, isTimedOut, wasCancelled, shouldKill)
+        {
+            RawOutput = rawOutput
+        };
         
         static string RemoveWindowsLineEndings(string input)
             => input.Replace("\r\n", "\n").Replace("\r", "\n");
@@ -452,21 +497,25 @@ public static partial class ProcessExecutor
         }
         else if (processStrings)
         {
-            if (current.Count == 0)
-            {
-                current.Add([]);
-            }
+            if (string.IsNullOrWhiteSpace(data))
+                return;
 
-            if (current[0].TryGetValue(OutputDictionary.StringOutputKey, out var existingText))
-            {
-                //remove console characters \x1b[...m
-                existingText = AnsiConsoleCharacters().Replace(existingText?.ToString() ?? string.Empty, string.Empty);
+            // Accumulate into the last entry only if it is a string accumulator.
+            // Never merge strings into JSON object or array entries.
+            var last = current.Count > 0 ? current[^1] : null;
+            bool lastIsString = last is not null
+                                && last.ContainsKey(OutputDictionary.StringOutputKey)
+                                && last.Count == 1;
 
-                current[0][OutputDictionary.StringOutputKey] = existingText + "\n" + data;
-            }
-            else if (!string.IsNullOrWhiteSpace(data))
+            if (lastIsString)
             {
-                current[0][OutputDictionary.StringOutputKey] = data;
+                var existingText = AnsiConsoleCharacters()
+                    .Replace(last![OutputDictionary.StringOutputKey]?.ToString() ?? string.Empty, string.Empty);
+                last[OutputDictionary.StringOutputKey] = existingText + "\n" + data;
+            }
+            else
+            {
+                current.Add(new Any() { [OutputDictionary.StringOutputKey] = data });
             }
         }
     }
@@ -492,12 +541,12 @@ public static partial class ProcessExecutor
         if (stepOutputs is null)
             return null;
 
-        List<(Type Type, object? Output)> outputList = [];
+        List<object?> outputList = [];
         foreach (var output in stepOutputs)
         {
             if (output.TryGetValue(OutputDictionary.ArrayOutputKey, out object? value))
             {
-                outputList.Add((typeof(object[]), value));
+                outputList.Add(value);
             }
             else if (
                 output.Count == 1 && output.ContainsKey(OutputDictionary.StringOutputKey)
@@ -506,44 +555,41 @@ public static partial class ProcessExecutor
                 && !string.IsNullOrEmpty(text)
             )
             {
-                if (outputList.FirstOrDefault().Type == typeof(string))
-                {
-                    var existing = outputList[0].Output?.ToString() ?? string.Empty;
-                    outputList[0] = (typeof(string), existing + "\n" + text.Trim());
-                    continue;
-                }
-                outputList.Add((typeof(string), text.Trim()));
-
+                // Try to parse accumulated string as JSON (handles multiline/pretty-printed JSON)
+                outputList.Add(TryParseJsonString(text.Trim()));
             }
             else if (output.Count == 0)
             {
-                outputList.Add((typeof(string), string.Empty));
+                // skip empty entries
             }
             else
             {
-                outputList.Add((typeof(Any), output));
+                outputList.Add(output);
             }
         }
 
-        if (outputList.Count == 1)
+        return outputList.Count switch
         {
-            var singleOutput = outputList[0].Output;
-            // If the output is a string, try to parse it as JSON
-            if (singleOutput is string strOutput && !string.IsNullOrWhiteSpace(strOutput))
+            0 => null,
+            1 => outputList[0],
+            _ => outputList.ToArray()
+        };
+
+        static object TryParseJsonString(string text)
+        {
+            var (_, isObject, isArray, _) = JsonType.Of(text);
+            if (isObject)
             {
-                var (_, isObject, isArray, _) = JsonType.Of(strOutput.Trim());
-                if (isObject)
-                {
-                    return JsonSerializer.Deserialize<Any>(strOutput);
-                }
-                else if (isArray)
-                {
-                    return JsonSerializer.Deserialize<List<object?>>(strOutput);
-                }
+                return JsonSerializer.Deserialize<Any>(text)
+                       ?? (object)text;
             }
-            return singleOutput;
+            if (isArray)
+            {
+                return JsonSerializer.Deserialize<List<object?>>(text)
+                       ?? (object)text;
+            }
+            return text;
         }
-        return outputList.Select(o => o.Output).ToArray();
     }
 
     public static string StrigifyOutput(string name, OutputDictionary outputs)

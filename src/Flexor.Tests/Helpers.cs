@@ -1,4 +1,4 @@
-﻿using Flexor.Executor;
+using Flexor.Executor;
 using Flexor.Options;
 using Flexor.Resources;
 using Microsoft.Extensions.Logging;
@@ -6,6 +6,8 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 namespace Flexor.Tests;
 
@@ -30,7 +32,7 @@ internal class Helpers
         foreach (var param in parameters)
         {
             sb.AppendLine($"param {param.Key} = {System.Text.Json.JsonSerializer.Serialize(param.Value)}");
-        }        
+        }
         File.WriteAllText(filePath, sb.ToString());
     }
 
@@ -39,8 +41,6 @@ internal class Helpers
         Console.WriteLine($"Current working directory: {Environment.CurrentDirectory}");
         Console.WriteLine($"Running bicep local deploy with params file: {paramsFile}");
 
-        var resource = new DummyOutputResource();
-        var outputs = new OutputDictionary();
         var result = await ProcessExecutor.RunAsync(
             new ProcessStartOptions
             {
@@ -51,27 +51,82 @@ internal class Helpers
                     "--format",
                     "json"
                 ],
-                StdOutputHandler = (line) =>
-                {
-                    ProcessExecutor.ParseOutput(outputs, name, line);                    
-                },                                                                          
-            },  
+                CaptureRawOutput = true
+            },
             logger,
             cancellation
         );
+
         if (result.Success is false)
         {
-            Console.WriteLine(JsonSerializer.Serialize(outputs, new JsonSerializerOptions { WriteIndented = true }));
+            Console.WriteLine(result.RawOutput);
         }
         Assert.True(result.Success, $"Process failed with exit code {result.ExitCode}");
-        var output = ProcessExecutor.ResolveOutput(name, outputs);
-        
-        if (output is Any any)
+
+        var fullOutput = StripLineBreaksInJsonStrings(result.RawOutput ?? "");
+
+        var doc = JsonNode.Parse(fullOutput);
+        var outputs = doc?["outputs"]?.AsObject()
+            ?? throw new Exception($"No 'outputs' property found in bicep output:\n{fullOutput}");
+
+        var any = new Any();
+        foreach (var prop in outputs)
         {
-            return any;
+            any[prop.Key] = ResolveJsonValue(prop.Value);
         }
-        
-        throw new Exception($"Output is not of type Any. Actual type: {output?.GetType().FullName ?? "null"}");
+        return any;
+    }
+
+    static readonly Regex AnsiEscape = new(@"\x1b\[[\?]?[0-9;]*[A-Za-z]", RegexOptions.Compiled);
+
+    static object? ResolveJsonValue(JsonNode? node) => node switch
+    {
+        JsonValue v when v.TryGetValue<bool>(out var b) => b,
+        JsonValue v when v.TryGetValue<int>(out var i) => i,
+        JsonValue v when v.TryGetValue<long>(out var l) => l,
+        JsonValue v when v.TryGetValue<double>(out var d) => d,
+        JsonValue v when v.TryGetValue<string>(out var s) => AnsiEscape.Replace(s, ""),
+        JsonArray a => a.Select(ResolveJsonValue).ToArray(),
+        JsonObject o => o.ToDictionary(p => p.Key, p => ResolveJsonValue(p.Value)),
+        null => null,
+        _ => node.ToJsonString()
+    };
+
+    /// <summary>
+    /// Bicep CLI wraps long JSON string values at a column boundary, inserting
+    /// literal CR/LF bytes inside the string. Strip them so System.Text.Json
+    /// can parse the output.
+    /// </summary>
+    static string StripLineBreaksInJsonStrings(string json)
+    {
+        var sb = new StringBuilder(json.Length);
+        bool inString = false;
+        for (int i = 0; i < json.Length; i++)
+        {
+            char c = json[i];
+            if (c == '"' && !IsEscaped(json, i))
+            {
+                inString = !inString;
+                sb.Append(c);
+            }
+            else if (inString && (c == '\r' || c == '\n'))
+            {
+                // Drop unwanted line-wrap bytes
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+        return sb.ToString();
+
+        static bool IsEscaped(string s, int index)
+        {
+            int backslashes = 0;
+            for (int i = index - 1; i >= 0 && s[i] == '\\'; i--)
+                backslashes++;
+            return backslashes % 2 == 1;
+        }
     }
 
     public static Result<Any?> AsAny(string json)

@@ -18,4 +18,10 @@
 /// <param name="Killed">
 /// Indicates whether the process was killed.
 /// </param>
-public record ProcessResult(bool Success, int ExitCode, bool Timeout, bool Cancelled, bool Killed);
+public record ProcessResult(bool Success, int ExitCode, bool Timeout, bool Cancelled, bool Killed)
+{
+    /// <summary>
+    /// The raw standard output captured when CaptureRawOutput is enabled.
+    /// </summary>
+    public string? RawOutput { get; init; }
+}

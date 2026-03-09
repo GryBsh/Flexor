@@ -1,32 +1,76 @@
 # Flexor
 
-A Bicep module to flexibly run scripts and commands during deployment.
+A Bicep extension to flexibly run scripts, commands, HTTP requests, and git operations during local deployments.
 
 ```yaml
 version: 0.1.2026.1
 ```
 
 ## Why?
-Why not? There are frequently times I need something quick and easy to help slap disparate parts of a 
-deployment together, where the structural parts like parameters and parsing, slicing, and converting data types 
-is all handled. So why not Bicep?
+
+Why not? There are frequently times I need something quick and easy to help slap disparate parts of a deployment together, where the structural parts like parameters and parsing, slicing, and converting data types is all handled. So why not Bicep?
 
 ## Requirements
-- Bicep v0.40.1 (or later)
 
-## This a work in progress
-Assume the composition of resources for unreleased API versions are subject to potential breaking change. Once released, it will remain fixed until superceded or deprecated/removed.
+- [Bicep CLI](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/install) v0.40.1 or later
+- For scripting: the target shell must be installed (PowerShell, Bash, Python, etc.)
+- For container execution: Docker or compatible runtime
+- For git operations: no additional requirements (bundled libgit2)
+
+## This is a work in progress
+
+Assume the composition of resources for unreleased API versions are subject to potential breaking change. Once released, it will remain fixed until superseded or deprecated/removed.
+
+## Quick Start
+
+1. Download the latest release and extract into your project root
+2. Ensure `bicepconfig.json` is configured:
+
+```json
+{
+  "experimentalFeaturesEnabled": { "localDeploy": true },
+  "extensions": { "flexor": ".bicep/bin/flexor" }
+}
+```
+
+3. Create a Bicep file:
+
+```bicep
+targetScope = 'local'
+extension flexor
+
+resource hello 'Flexor/script@2026-01-01' = {
+  name: 'hello'
+  shell: 'Bash'
+  contents: '''
+    echo '{"message":"Hello from Flexor!"}'
+  '''
+}
+
+output message string = json(hello.output).message
+```
+
+4. Create a params file and deploy:
+
+```bash
+bicep local-deploy hello.bicepparam
+```
 
 ## Features
-- Run scripts and commands during deployment
-- Support for inline scripts and external script files
-- Parameterization of scripts with Bicep variables and parameters
-- Output handling to capture script results
-- Error handling and logging for script execution
-- Cross-platform support for Windows and Linux environments
-- Support for multiple scripting languages (e.g., PowerShell, Bash, Python) 
-  - (They need to be installed already)
 
+- Run external commands and executables
+- Execute scripts in PowerShell, Bash, Python, or Cmd
+- Inline script content or external script files
+- Parameterization with Bicep variables and environment variables
+- Automatic JSON output parsing with Bicep's `json()` function
+- Smart output handling: strings merge, JSON stays structured, mixed output becomes arrays
+- HTTP client with auth, headers, query params, and file download
+- Git clone and pull operations with credential support
+- Container execution via Docker/Podman
+- Custom resource types via the module system
+- Per-resource logging with rollover and append modes
+- Cross-platform support (Windows, Linux, macOS)
+- Timeout, cancellation, and error handling
 
 ## Resources
 
@@ -34,152 +78,228 @@ Assume the composition of resources for unreleased API versions are subject to p
 
 #### Run
 
-Runs a program
+Execute an external command or program.
 
 ```bicep
 resource cmd 'Flexor/run@2026-01-01' = {
-  name: 'some-name'                       // Name of the activity (log name)
-  command: 'someexe'                      // The command/executable to run
-  args: [                                 // Command line arguments (optional)
-    '--arg',
-    '-arg','value'
-    ...
-  ]
-  env: {                                  // Environment Variables (optional)
-    var: 'value'
-    ...
+  name: 'build'
+  command: 'bicep'
+  args: ['build', 'main.bicep', '--outdir', 'output']
+  env: {
+    BICEP_TRACE: '1'
   }
-  options: {                              // Optional options (These are the same in Run, Script, and Module resources)
-    workingDirectory: '/path/to/'         // A working directory to use other than the current
-    runAsAdmin: false                     // Whether to run the command with elevated privleges
-    timeoutSeconds: 30                    // A timeout to wait for execution to finish before failing the activity
-    continueOnFailure: false              // Whether the command failing is a failure
-    env: {                                // Options for how Environment Variables are handled
-      overwritePaths: false               // Overwrite PATH and path-like variables instead of appending to them
-      append: {                           // Other variables that should be appended to not overwritten, and the delimiter to use
-        var: '|' 
-      }
-    }
-    useContainer: false                   // should run in a container                
-    containerImage: 'debian:latest'       // the image to use
-    containerCli: 'docker'                // the container cli to use to run the container, if you use docker: you can omit this and cli args.
-    containerCliArgs: ['run', '--rm', '-t'] // arguments for the container cli
+  options: {
+    timeoutSeconds: 120
   }
 }
+
+output result string = cmd.output
 ```
 
 #### Script
 
-Runs a Script
+Execute a script in a supported shell.
 
 ```bicep
-resource script 'Flexor/script@2026-01-01' = {
-  name: 'some-name'                       // Name of the activity (log name)
-  shell: 'bash'                           // or cmd, powershell, or python
-  script: '/path/to/script'               // Path to script file
-                                          // OR
-  contents: '''                           
-# Literal Script Content
-  '''                                     // A literal script
-  env: { ... }                            // Same as Run
-  args [ ... ]                            // Same as Run
-  options: { ... }
+// File-based script with environment variables
+resource pwsh 'Flexor/script@2026-01-01' = {
+  name: 'deploy'
+  shell: 'PowerShell'
+  script: 'scripts/deploy.ps1'
+  env: {
+    Environment: 'production'
+  }
 }
+
+// Inline script
+resource py 'Flexor/script@2026-01-01' = {
+  name: 'check'
+  shell: 'Python'
+  contents: '''
+import os, json
+print(json.dumps({"Works": True, "EnvVar": os.getenv("EnvVar")}))
+  '''
+  env: {
+    EnvVar: 'Set from Bicep'
+  }
+}
+
+output works bool = json(py.output).Works
 ```
+
+Supported shells: `Bash`, `PowerShell`, `Cmd`, `Python`
 
 #### Repo
 
-Clone or Pull a Repository
+Clone or pull a git repository.
 
 ```bicep
-resource repo 'Flexor/repo@2026-10-01' = {   
-  type: 'git'                             // Only git is currently supported, (optional)
-  source: 'https://'                      // The repository source
-  path: '/path/to/'                       // The local path for the repository
-  credential: {                           // Credentials to use for the operation (optional)
-    username: '...'
-    password: [SecureString]
-  }
+resource clone 'Flexor/repo@2026-01-01' = {
+  source: 'https://github.com/org/repo.git'
+  path: 'output/repo'
+}
+
+resource pull 'Flexor/repo@2026-01-01' existing = {
+  path: clone.path
 }
 ```
 
 #### Http
 
-An HTTP client
+Make HTTP requests.
 
 ```bicep
-resource http 'Flexor/http@2026-01-01' = {  
-  url: 'https://....'
-  authorization: {
-    bearerToken: '...'
-    credential: { ... }
-  }
-  query: [                                // Query parameters
-    { name: '...', value: ''}
-  ]
-  method: '...'                           // HTTP method
-  headers: [                              // HTTP headers
-    { name: '...', value: '...' }
-  ],
-  contentType: 'some/mimeType'            // Body MIME Type
-  body: '...'                             // String body
-  options: {
-    timeoutSeconds: 300
-    ignoreSslErrors: false
-    followRedirects: true
-  }
+resource get 'Flexor/http@2026-01-01' existing = {
+  url: 'https://api.example.com/status'
 }
+
+var payload = { name: 'test', value: 42 }
+
+resource post 'Flexor/http@2026-01-01' = {
+  url: 'https://api.example.com/data'
+  method: 'POST'
+  contentType: 'application/json'
+  headers: [{ name: 'accept', value: 'application/json' }]
+  body: string(payload)
+  expectedStatusCodes: [200, 201]
+  dependsOn: [get]
+}
+
+output statusCode int = post.statusCode
+output response object = json(post.output)
 ```
 
-#### Module
+Options: `timeoutSeconds` (default 300), `ignoreSslErrors`, `followRedirects`
 
-Declares a Flexor reource type, that will handle requests for those types.
+Auth: `authorization.bearerToken` or `authorization.credential { username, password }`
+
+#### Module & Resource
+
+Define reusable custom resource types with handler scripts.
 
 ```bicep
-resource 'module' 'Flexor/module@2026-01-01' = {
-  type: 'my/rez'
+// Declare a custom type
+resource userModule 'Flexor/module@2026-01-01' = {
+  shell: 'PowerShell'
+  type: 'MyOrg/User'
   version: 'v1'
-  shell: 'powershell'                  // or bash, cmd, python
-  options: {
-    type: 'env'                        // or args, how parameters are passed
-    args: [ ... ]
-    env: { ... } 
-    exec: { ... }                      // Same as Run/Script Options
-  }
-  get: '/path/to/script'               // Path to get script
-  getOptions: {
-    exec: { ... }                      // option overrides for get
-  }
-  createOrUpdate: '/path/to/script'    // Path to createOrUpdate script
-  createOrUpdateOptions: {
-    exec: { ... }                      // option overrides for createOrUpdate
-  }
-  delete: '/path/to/script'            // Path to delete script
-  deleteOptions: { ... }               // option overrides for delete
+  get: 'scripts/Get-User.ps1'
+  createOrUpdate: 'scripts/Set-User.ps1'
+  delete: 'scripts/Remove-User.ps1'
 }
+
+// Create an instance
+resource newUser 'Flexor/resource@2026-01-01' = {
+  name: 'new-user'
+  type: userModule.typeName
+  parameters: {
+    Username: 'jdoe'
+    Email: 'jdoe@example.com'
+  }
+}
+
+// Read existing
+resource existingUser 'Flexor/resource@2026-01-01' existing = {
+  name: 'existing-user'
+  type: userModule.typeName
+  parameters: {
+    Username: 'admin'
+  }
+}
+
+output created object = json(newUser.output)
+output existing object = json(existingUser.output)
 ```
 
-#### Resource
+Parameters are passed as environment variables (`PARAM_{name}`) by default. Other modes: `args` (`--name value`), `stdinenv` (`KEY="value"`), `stdinjson` (JSON object).
 
-Uses a previously decleared resource module
+### Common Execution Options
+
+All execution resources (Run, Script, Module, Resource) share these options:
 
 ```bicep
-resource rez 'Flexor/resource@2026-01-01' = {
-  name: 'my-resource-name'
-  type: 'my/rez@v1'
-  parameters: {                        // Parameters to pass to the resource handler script
-    param1: 'value1'
-    param2: 'value2'
+options: {
+  workingDirectory: '/path/to/'
+  runAsAdmin: false
+  timeoutSeconds: 30
+  continueOnFailure: false
+  noWait: false
+  env: {
+    overwritePaths: false
+    append: { CLASSPATH: ':' }
   }
-  options: { 
-    exec: { ... }                      // Same as Module exec options
-  }
+  // Container options
+  useContainer: false
+  containerImage: 'debian:latest'
+  containerCli: 'docker'
+  containerCliArgs: ['run', '--rm', '-i']
+  containerMounts: { '/host/path': '/container/path' }
 }
 ```
 
-Parameters are passed as environment variables (`PARAM_{name}`) or args (`--{name} {value}`) depending on the `options.type` setting.
+## Output Behavior
+
+Flexor automatically classifies each line of stdout as JSON or plain text and resolves the final output:
+
+| Scenario | Output Type |
+|---|---|
+| One or more plain strings | Single multiline string |
+| One JSON object (single or multiline) | JSON object |
+| Multiple JSON objects | JSON array |
+| JSON array(s) | Array value(s) |
+| Mix of JSON and strings | Array (each string block and JSON object is one item) |
+
+Consecutive plain strings are merged into a single string item. Blank lines are ignored.
+
+```bicep
+// Single JSON → object
+resource data 'Flexor/script@2026-01-01' = {
+  name: 'data'
+  shell: 'Bash'
+  contents: 'echo \'{"status":"ok"}\''
+}
+output status string = json(data.output).status
+
+// Multiple JSON → array
+resource multi 'Flexor/script@2026-01-01' = {
+  name: 'multi'
+  shell: 'Bash'
+  contents: '''
+    echo '{"a":1}'
+    echo '{"b":2}'
+  '''
+}
+output items array = json(multi.output)
+```
+
+## Documentation
+
+Detailed documentation is available in the [docs/](docs/) directory:
+
+- [Getting Started](docs/getting-started.md) - Installation and first steps
+- [Resource Reference](docs/resources.md) - Complete property reference for all resource types
+- [Container Execution](docs/containers.md) - Running scripts in Docker containers
+- [Custom Modules](docs/modules.md) - Defining and using custom resource types
+- [Configuration](docs/configuration.md) - Extension, logging, and environment configuration
+- [Architecture](docs/architecture.md) - Internal design, project structure, and extension points
+
+## Building from Source
+
+Requirements: .NET 10.0 SDK
+
+```powershell
+./build.ps1                    # Build for all platforms
+```
+
+## Testing
+
+```bash
+dotnet test src/Flexor.Tests/  # Run all tests (127 tests: 121 unit + 6 integration)
+```
+
+Integration tests require the Bicep CLI and will execute `bicep local-deploy` against test `.bicep` files.
 
 ## Known Issues
 
-- PowerShell and Python Scripts do not execute under GitHub Actions
-  - I'd like to be able to run the test suite when releases are created, so, I'm looking into this.
+- PowerShell and Python scripts do not execute under GitHub Actions
+  - Investigating environment setup issues for CI test execution

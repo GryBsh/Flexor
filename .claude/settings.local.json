@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__scrinia__guide",
+      "mcp__scrinia__store",
+      "Bash(dotnet test:*)",
+      "Bash(bicep local-deploy:*)",
+      "Bash(docker:*)",
+      "Bash(dotnet list:*)",
+      "*",
+      "Bash(dotnet add:*)",
+      "Bash(dotnet build:*)"
+    ]
+  }
+}

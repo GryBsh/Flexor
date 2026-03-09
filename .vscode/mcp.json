@@ -1,0 +1,12 @@
+{
+	"servers": {
+		"nurl": {
+			"type": "stdio",
+			"command": "e:\\mcptools\\nurl\\nurl.exe",
+			"args": [
+				"serve"
+			]
+		}
+	},
+	"inputs": []
+}
